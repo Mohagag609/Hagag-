@@ -158,6 +158,7 @@ function exportCSV(headers, rows, name){
 function parseNumber(v){ v=String(v||'').replace(/[^\d.]/g,''); return Number(v||0); }
 function printHTML(title, bodyHTML){
   const w=window.open('','_blank');
+  if(!w) return alert('الرجاء السماح بال نوافذ المنبثقة لطباعة التقارير.');
   w.document.write(`<html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${title}</title>
   <style>
     @page{size:A4;margin:12mm}
@@ -172,7 +173,11 @@ function printHTML(title, bodyHTML){
   </head><body><div class="wrap">${bodyHTML}
   <footer>تمت الطباعة في ${new Date().toLocaleString('ar-EG')}</footer>
   </div></body></html>`);
-  w.document.close(); w.focus(); w.print();
+  w.document.close();
+  setTimeout(() => {
+    w.focus();
+    w.print();
+  }, 250);
 }
 function unitById(id){ return state.units.find(u=>u.id===id); }
 function custById(id){ return state.customers.find(c=>c.id===id); }
@@ -978,49 +983,78 @@ function renderPartners(){
   document.getElementById('up-list').innerHTML=table(['الوحدة','الشريك','النسبة',''], upRows);
 }
 
+let lastReportData = null;
+
 /* ===== التقارير ===== */
 function renderReports(){
+  let selectedReportType = null;
+
   view.innerHTML=`
     <div class="card">
-      <h3 style="margin-bottom:12px;">التقارير</h3>
-
+      <h3 style="margin-bottom:12px;">1. اختر نوع التقرير</h3>
       <div class="grid grid-3" style="gap: 12px; margin-bottom: 16px;">
         <div class="card">
             <h4 style="margin-top:0; margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:4px;">تقارير مالية</h4>
             <div class="tools" style="flex-direction: column; gap: 8px; align-items: stretch;">
-                <button class="btn gold" onclick="runReport('payments_monthly')">مدفوعات شهرية</button>
-                <button class="btn gold" onclick="runReport('cashflow')">التدفقات النقدية العامة</button>
+                <button class="btn gold report-btn" data-type="payments_monthly">مدفوعات شهرية</button>
+                <button class="btn gold report-btn" data-type="cashflow">التدفقات النقدية العامة</button>
             </div>
         </div>
         <div class="card">
             <h4 style="margin-top:0; margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:4px;">تقارير الشركاء</h4>
             <div class="tools" style="flex-direction: column; gap: 8px; align-items: stretch;">
-                <button class="btn gold" onclick="runReport('partner_profits')">تفاصيل أرباح الشركاء</button>
-                <button class="btn gold" onclick="runReport('partner_cashflow')">ملخص تدفقات الشركاء</button>
+                <button class="btn gold report-btn" data-type="partner_profits">تفاصيل أرباح الشركاء</button>
+                <button class="btn gold report-btn" data-type="partner_cashflow">ملخص تدفقات الشركاء</button>
             </div>
         </div>
         <div class="card">
             <h4 style="margin-top:0; margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:4px;">تقارير المتابعة</h4>
             <div class="tools" style="flex-direction: column; gap: 8px; align-items: stretch;">
-                <button class="btn gold" onclick="runReport('inst_due')">أقساط مستحقة</button>
-                <button class="btn gold" onclick="runReport('cust_activity')">نشاط العملاء</button>
-                <button class="btn gold" onclick="runReport('units_status')">حالة الوحدات</button>
+                <button class="btn gold report-btn" data-type="inst_due">كل الأقساط المستحقة</button>
+                <button class="btn gold report-btn" data-type="inst_overdue">الأقساط المتأخرة فقط</button>
+                <button class="btn gold report-btn" data-type="cust_activity">نشاط العملاء</button>
+                <button class="btn gold report-btn" data-type="units_status">حالة الوحدات</button>
             </div>
         </div>
       </div>
 
-      <h4>فلاتر</h4>
+      <h3 style="margin-bottom:12px;">2. حدد الفلاتر (اختياري)</h3>
       <div class="tools" style="gap:8px;">
         <input type="date" class="input" id="rep-from" style="flex:1;" placeholder="من تاريخ">
         <input type="date" class="input" id="rep-to" style="flex:1;" placeholder="إلى تاريخ">
-        <select id="rep-partner-sel" class="select" style="flex:1;">
-            <option value="">كل الشركاء</option>
+        <select id="rep-partner-sel" class="select" style="flex:1; visibility: hidden;">
+            <option value="">اختر شريك...</option>
             ${state.partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
         </select>
       </div>
+
+      <h3 style="margin-bottom:12px;">3. قم بإنشاء التقرير</h3>
+      <button class="btn" id="generate-report-btn" style="width:100%; padding: 12px; font-size: 16px;">إنشاء التقرير</button>
       <hr>
       <div id="rep-out"></div>
     </div>`;
+
+  document.querySelectorAll('.report-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.report-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedReportType = btn.dataset.type;
+
+      const partnerSel = document.getElementById('rep-partner-sel');
+      if (selectedReportType === 'partner_profits' || selectedReportType === 'partner_cashflow') {
+        partnerSel.style.visibility = 'visible';
+      } else {
+        partnerSel.style.visibility = 'hidden';
+      }
+    };
+  });
+
+  document.getElementById('generate-report-btn').onclick = () => {
+    if (!selectedReportType) {
+      return alert('الرجاء اختيار نوع التقرير أولاً.');
+    }
+    runReport(selectedReportType);
+  };
 }
 window.runReport=(type)=>{
   const from=document.getElementById('rep-from').value; const to=document.getElementById('rep-to').value;
@@ -1051,6 +1085,27 @@ window.runReport=(type)=>{
       if(from) inst=inst.filter(i=>i.dueDate>=from); if(to) inst=inst.filter(i=>i.dueDate<=to);
       rows=inst.map(i=>[unitCode(i.unitId),(custById(state.contracts.find(c=>c.unitId===i.unitId)?.customerId)||{}).name,egp(i.amount),i.dueDate]);
       break;
+    case 'inst_overdue':
+      title='تقرير الأقساط المتأخرة فقط';
+      headers=['الوحدة', 'العميل', 'المبلغ', 'تاريخ الاستحقاق', 'أيام التأخير'];
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      let overdueInst = state.installments.filter(i => {
+          return i.status !== 'مدفوع' && i.dueDate && new Date(i.dueDate) < today;
+      });
+      if (from) overdueInst = overdueInst.filter(i => i.dueDate >= from);
+      if (to) overdueInst = overdueInst.filter(i => i.dueDate <= to);
+      rows = overdueInst.map(i => {
+        const delay = Math.floor((today - new Date(i.dueDate)) / (1000 * 60 * 60 * 24));
+        return [
+          unitCode(i.unitId),
+          (custById(state.contracts.find(c=>c.unitId===i.unitId)?.customerId)||{}).name,
+          egp(i.amount),
+          i.dueDate,
+          `${delay} يوم`
+        ]
+      });
+      break;
     case 'payments_monthly':
       title='تقرير المدفوعات الشهرية'; headers=['الشهر','إجمالي المدفوعات'];
       let pays=state.payments.slice();
@@ -1060,6 +1115,8 @@ window.runReport=(type)=>{
       break;
     case 'partner_profits':
       title='تقرير أرباح الشركاء'; headers=['الشريك','الوحدة','إجمالي الدفعة','نسبة الشريك','ربح الشريك'];
+      // Note: This report includes ALL payments made for a unit where a partner has a share.
+      // The calculation is independent of the installment type (e.g., monthly vs. annual).
       let partnerPays=state.payments.slice();
       if(from) partnerPays=partnerPays.filter(p=>p.date>=from); if(to) partnerPays=partnerPays.filter(p=>p.date<=to);
       partnerPays.forEach(p=>{
@@ -1073,6 +1130,8 @@ window.runReport=(type)=>{
     case 'partner_cashflow':
       title = 'تقرير ملخص تدفقات الشريك';
       headers = ['الشهر', 'إجمالي حصة الأرباح'];
+      // Note: This report includes ALL payments made for a unit where a partner has a share.
+      // The calculation is independent of the installment type (e.g., monthly vs. annual).
       const partnerId = document.getElementById('rep-partner-sel').value;
       if (!partnerId) {
           out.innerHTML = '<p style=\"color:var(--warn)\">الرجاء اختيار شريك لعرض هذا التقرير.</p>';
@@ -1121,15 +1180,20 @@ window.runReport=(type)=>{
       rows=trans.map(t=>{ bal+=Number(t.i||0)-Number(t.o||0); return [t.d,t.n,egp(t.i),egp(t.o),egp(bal)]; });
       break;
   }
+  lastReportData = { title, headers, rows };
   const bodyHTML=`<h1>${title}</h1>`+table(headers,rows);
-  out.innerHTML=bodyHTML + `<div class="tools"><button class="btn" onclick="printReport('${title}',JSON.stringify({h:headers,r:rows}))">طباعة PDF</button></div>`;
+  out.innerHTML=bodyHTML + `<div class="tools"><button class="btn" onclick="printLastReport()">طباعة PDF</button></div>`;
 };
-window.printReport=(title,data)=>{
-  const d=JSON.parse(data);
-  const head=`<tr>${d.h.map(h=>`<th>${h}</th>`).join('')}</tr>`;
-  const body=`<tbody>${d.r.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
-  printHTML(title, `<h1>${title}</h1><table><thead>${head}</thead>${body}</table>`);
-};
+function printLastReport() {
+    if (lastReportData) {
+        const {title, headers, rows} = lastReportData;
+        const head = `<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
+        const body = `<tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
+        printHTML(title, `<h1>${title}</h1><table><thead>${head}</thead>${body}</table>`);
+    } else {
+        alert('لا توجد بيانات تقرير للطباعة. يرجى إنشاء تقرير أولاً.');
+    }
+}
 
 /* ===== نسخة احتياطية ===== */
 function renderBackup(){
