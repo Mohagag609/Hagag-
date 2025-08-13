@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* CSS variables for consistent theming */
         :root {
@@ -1849,18 +1850,18 @@
                     </div>
                     <div class="grid grid-cols-2 gap-1">
                         <div class="card">
-                            <h3><span style="font-size: 1.5rem;">📥</span> حفظ البيانات في ملف</h3>
-                            <p>احفظ نسخة من جميع بياناتك الحالية في ملف JSON. احتفظ بهذا الملف في مكان آمن.</p>
-                            <button id="backup-btn" class="btn">تنزيل ملف البيانات</button>
+                            <h3><span style="font-size: 1.5rem;">📥</span> تصدير إلى Excel</h3>
+                            <p>احفظ نسخة من جميع بياناتك الحالية في ملف Excel. سيكون كل نوع من البيانات في ورقة منفصلة.</p>
+                            <button id="backup-btn" class="btn">تنزيل ملف Excel</button>
                         </div>
                         <div class="card">
-                            <h3><span style="font-size: 1.5rem;">📤</span> تحميل البيانات من ملف</h3>
-                            <p class="warn" style="color: var(--danger-color);"><strong>تحذير:</strong> تحميل البيانات من ملف سيستبدل جميع البيانات الحالية بشكل دائم.</p>
+                            <h3><span style="font-size: 1.5rem;">📤</span> استيراد من Excel</h3>
+                            <p class="warn" style="color: var(--danger-color);"><strong>تحذير:</strong> استيراد البيانات من ملف سيستبدل جميع البيانات الحالية بشكل دائم.</p>
                             <div class="form-group">
-                                <label for="restore-input">اختر ملف البيانات (.json)</label>
-                                <input type="file" id="restore-input" class="input" accept=".json">
+                                <label for="restore-input">اختر ملف Excel (.xlsx)</label>
+                                <input type="file" id="restore-input" class="input" accept=".xlsx, .xls">
                             </div>
-                            <button id="restore-btn" class="btn warn" disabled>تحميل البيانات</button>
+                            <button id="restore-btn" class="btn warn" disabled>استيراد البيانات</button>
                         </div>
                     </div>
                 `;
@@ -1879,19 +1880,32 @@
 
             function handleBackup() {
                 try {
-                    const jsonString = JSON.stringify(app.state, null, 2);
-                    const blob = new Blob([jsonString], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
+                    const wb = XLSX.utils.book_new();
+
+                    // Create a worksheet for each data type
+                    const ws_units = XLSX.utils.json_to_sheet(app.state.units);
+                    XLSX.utils.book_append_sheet(wb, ws_units, "الوحدات");
+
+                    const ws_partners = XLSX.utils.json_to_sheet(app.state.partners);
+                    XLSX.utils.book_append_sheet(wb, ws_partners, "الشركاء");
+
+                    const ws_customers = XLSX.utils.json_to_sheet(app.state.customers);
+                    XLSX.utils.book_append_sheet(wb, ws_customers, "العملاء");
+
+                    const ws_contracts = XLSX.utils.json_to_sheet(app.state.contracts);
+                    XLSX.utils.book_append_sheet(wb, ws_contracts, "العقود");
+
+                    const ws_installments = XLSX.utils.json_to_sheet(app.state.installments);
+                    XLSX.utils.book_append_sheet(wb, ws_installments, "الأقساط");
+
+                    const ws_payments = XLSX.utils.json_to_sheet(app.state.payments);
+                    XLSX.utils.book_append_sheet(wb, ws_payments, "الدفعات");
+
                     const date = new Date().toISOString().slice(0, 10);
-                    a.href = url;
-                    a.download = `real-estate-backup-${date}.json`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
+                    XLSX.writeFile(wb, `real-estate-backup-${date}.xlsx`);
+
                 } catch (e) {
-                    alert('حدث خطأ أثناء إنشاء ملف النسخ الاحتياطي.');
+                    alert('حدث خطأ أثناء إنشاء ملف Excel.');
                     console.error(e);
                 }
             }
@@ -1911,21 +1925,36 @@
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     try {
-                        const restoredState = JSON.parse(event.target.result);
-                        if (restoredState && Array.isArray(restoredState.units)) {
-                            app.state = restoredState;
-                            saveState();
-                            alert('تمت استعادة البيانات بنجاح! سيتم إعادة تحميل الصفحة.');
-                            location.reload();
-                        } else {
-                            alert('الملف غير صالح أو لا يحتوي على البيانات المتوقعة.');
-                        }
+                        const data = event.target.result;
+                        const workbook = XLSX.read(data, { type: 'binary' });
+
+                        const newState = { ...initialState };
+
+                        workbook.SheetNames.forEach(sheetName => {
+                            const ws = workbook.Sheets[sheetName];
+                            const jsonData = XLSX.utils.sheet_to_json(ws);
+
+                            switch(sheetName) {
+                                case 'الوحدات': newState.units = jsonData; break;
+                                case 'الشركاء': newState.partners = jsonData; break;
+                                case 'العملاء': newState.customers = jsonData; break;
+                                case 'العقود': newState.contracts = jsonData; break;
+                                case 'الأقساط': newState.installments = jsonData; break;
+                                case 'الدفعات': newState.payments = jsonData; break;
+                            }
+                        });
+
+                        app.state = newState;
+                        saveState();
+                        alert('تمت استعادة البيانات من ملف Excel بنجاح! سيتم إعادة تحميل الصفحة.');
+                        location.reload();
+
                     } catch (e) {
-                        alert('حدث خطأ أثناء قراءة الملف. تأكد من أنه ملف JSON صالح.');
+                        alert('حدث خطأ أثناء قراءة ملف Excel. تأكد من أنه ملف صالح.');
                         console.error(e);
                     }
                 };
-                reader.readAsText(file);
+                reader.readAsBinaryString(file);
             }
 
 
