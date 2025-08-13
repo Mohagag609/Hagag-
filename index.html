@@ -768,13 +768,20 @@
                 `;
             }
 
+            function handleExport(dataType) {
+                window.open(`http://localhost:8000/api/${dataType}/export/csv`);
+            }
+
             function renderUnits(container) {
                 const soldUnitIds = new Set(app.state.contracts.map(c => c.unitId));
 
                 container.innerHTML = `
                     <div class="page-header">
                         <h2>إدارة الوحدات (${app.state.units.length})</h2>
-                        <button id="add-unit-btn" class="btn">إضافة وحدة جديدة</button>
+                        <div>
+                            <button id="export-btn" class="btn outline" style="margin-left: 10px;">تصدير CSV</button>
+                            <button id="add-unit-btn" class="btn">إضافة وحدة جديدة</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="table">
@@ -809,6 +816,7 @@
                 `;
 
                 document.getElementById('add-unit-btn').addEventListener('click', () => showUnitForm());
+                document.getElementById('export-btn').addEventListener('click', () => handleExport('units'));
             }
 
             function showUnitForm(unitId = null) {
@@ -1022,7 +1030,10 @@
                 container.innerHTML = `
                     <div class="page-header">
                         <h2>إدارة الشركاء (${app.state.partners.length})</h2>
-                        <button id="add-partner-btn" class="btn">إضافة شريك جديد</button>
+                        <div>
+                            <button id="export-btn" class="btn outline" style="margin-left: 10px;">تصدير CSV</button>
+                            <button id="add-partner-btn" class="btn">إضافة شريك جديد</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="table">
@@ -1051,6 +1062,7 @@
                     </div>
                 `;
                 document.getElementById('add-partner-btn').addEventListener('click', () => showPartnerForm());
+                document.getElementById('export-btn').addEventListener('click', () => handleExport('partners'));
             }
 
             function showPartnerForm(partnerId = null) {
@@ -1136,7 +1148,10 @@
                 container.innerHTML = `
                     <div class="page-header">
                         <h2>إدارة العملاء (${app.state.customers.length})</h2>
-                        <button id="add-customer-btn" class="btn">إضافة عميل جديد</button>
+                        <div>
+                            <button id="export-btn" class="btn outline" style="margin-left: 10px;">تصدير CSV</button>
+                            <button id="add-customer-btn" class="btn">إضافة عميل جديد</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="table">
@@ -1167,6 +1182,7 @@
                     </div>
                 `;
                 document.getElementById('add-customer-btn').addEventListener('click', () => showCustomerForm());
+                document.getElementById('export-btn').addEventListener('click', () => handleExport('customers'));
             }
 
             function showCustomerForm(customerId = null) {
@@ -1257,7 +1273,10 @@
                 container.innerHTML = `
                     <div class="page-header">
                         <h2>إدارة العقود (${contracts.length})</h2>
-                        <button id="add-contract-btn" class="btn">إضافة عقد جديد</button>
+                        <div>
+                            <button id="export-btn" class="btn outline" style="margin-left: 10px;">تصدير CSV</button>
+                            <button id="add-contract-btn" class="btn">إضافة عقد جديد</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="table">
@@ -1275,7 +1294,7 @@
                                 ${contracts.map(c => {
                                     const unit = units.find(u => u.id === c.unitId);
                                     const customer = customers.find(cust => cust.id === c.customerId);
-                                    const paidAmount = payments.filter(p => p.contractId === c.id).reduce((sum, p) => sum + p.amount, 0);
+                                    const paidAmount = payments.filter(p => p.contract_id === c.id).reduce((sum, p) => sum + p.amount, 0);
                                     const remaining = c.totalPrice - paidAmount;
                                     return `
                                         <tr>
@@ -1296,6 +1315,7 @@
                     </div>
                 `;
                 document.getElementById('add-contract-btn').addEventListener('click', () => showContractForm());
+                document.getElementById('export-btn').addEventListener('click', () => handleExport('contracts'));
             }
 
             function showContractForm() {
@@ -1506,7 +1526,10 @@
                 container.innerHTML = `
                     <div class="page-header">
                         <h2>متابعة الأقساط (${installments.length})</h2>
-                        <input type="text" id="installments-search" class="input" placeholder="بحث بكود الوحدة, اسم العميل, الحالة..." style="width: 300px;">
+                        <div class="d-flex align-center">
+                            <input type="text" id="installments-search" class="input" placeholder="بحث..." style="width: 300px; margin-bottom: 0;">
+                            <button id="export-btn" class="btn outline" style="margin-right: 10px;">تصدير CSV</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="table">
@@ -1580,6 +1603,7 @@
                 }
 
                 searchInput.addEventListener('input', filterAndRender);
+                document.getElementById('export-btn').addEventListener('click', () => handleExport('installments'));
                 filterAndRender(); // Initial render
             }
 
@@ -1668,7 +1692,10 @@
                 container.innerHTML = `
                     <div class="page-header">
                         <h2>سجل الدفعات (${payments.length})</h2>
-                        <input type="text" id="payments-search" class="input" placeholder="بحث بكود الوحدة أو اسم العميل..." style="width: 300px;">
+                        <div class="d-flex align-center">
+                            <input type="text" id="payments-search" class="input" placeholder="بحث..." style="width: 300px; margin-bottom: 0;">
+                            <button id="export-btn" class="btn outline" style="margin-right: 10px;">تصدير CSV</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="table">
@@ -1723,6 +1750,7 @@
                 }
 
                 searchInput.addEventListener('input', filterAndRender);
+                document.getElementById('export-btn').addEventListener('click', () => handleExport('payments'));
                 filterAndRender();
             }
 

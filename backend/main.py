@@ -1,7 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
+import pandas as pd
+import io
 
 from . import crud, models, schemas
 from .database import SessionLocal, engine, get_db
@@ -154,3 +157,48 @@ def read_all_data(db: Session = Depends(get_db)):
         "installments": crud.get_installments(db),
         "payments": crud.get_payments(db),
     }
+
+# --- Export Endpoints ---
+
+def create_csv_response(data: List, filename: str):
+    df = pd.DataFrame([item.__dict__ for item in data])
+    # Remove SQLAlchemy internal state
+    if '_sa_instance_state' in df.columns:
+        df = df.drop(columns=['_sa_instance_state'])
+
+    stream = io.StringIO()
+    df.to_csv(stream, index=False)
+
+    response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return response
+
+@app.get("/api/units/export/csv")
+def export_units_csv(db: Session = Depends(get_db)):
+    units = crud.get_units(db)
+    return create_csv_response(units, "units.csv")
+
+@app.get("/api/partners/export/csv")
+def export_partners_csv(db: Session = Depends(get_db)):
+    partners = crud.get_partners(db)
+    return create_csv_response(partners, "partners.csv")
+
+@app.get("/api/customers/export/csv")
+def export_customers_csv(db: Session = Depends(get_db)):
+    customers = crud.get_customers(db)
+    return create_csv_response(customers, "customers.csv")
+
+@app.get("/api/contracts/export/csv")
+def export_contracts_csv(db: Session = Depends(get_db)):
+    contracts = crud.get_contracts(db)
+    return create_csv_response(contracts, "contracts.csv")
+
+@app.get("/api/installments/export/csv")
+def export_installments_csv(db: Session = Depends(get_db)):
+    installments = crud.get_installments(db)
+    return create_csv_response(installments, "installments.csv")
+
+@app.get("/api/payments/export/csv")
+def export_payments_csv(db: Session = Depends(get_db)):
+    payments = crud.get_payments(db)
+    return create_csv_response(payments, "payments.csv")
