@@ -10,18 +10,18 @@
     <style>
         /* CSS variables for consistent theming */
         :root {
-            --primary-color: #1A202C; /* Dark Blue-Gray for Header */
-            --secondary-color: #D69E2E; /* Golden Accent */
-            --light-color: #2D3748; /* Main Background */
-            --dark-color: #F7FAFC; /* Main Text Color (Light Gray) */
-            --success-color: #38A169; /* Green */
-            --danger-color: #E53E3E; /* Red */
-            --warning-color: #D69E2E; /* Golden Accent */
-            --white-color: #2D3748; /* Card Background - same as main bg */
-            --gray-color: #4A5568; /* Borders / Secondary Buttons */
-            --light-gray-color: #4A5568; /* Table Head / Alternating Rows */
-            --border-radius: 8px;
-            --box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            --primary-color: #005A9C;      /* Professional Blue */
+            --secondary-color: #007BFF;    /* Brighter Blue for accents */
+            --light-color: #F8F9FA;        /* Off-white page background */
+            --dark-color: #343A40;         /* Dark gray text */
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --white-color: #FFFFFF;        /* White card background */
+            --gray-color: #CED4DA;         /* Borders */
+            --light-gray-color: #E9ECEF;   /* Table head / hover */
+            --border-radius: 4px;          /* Sharper corners */
+            --box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); /* Flatter shadow */
         }
 
         /* General body and typography styles */
@@ -67,17 +67,18 @@
         }
 
         header .header-actions button {
-            background: var(--dark-color);
+            background: var(--secondary-color);
             color: var(--white-color);
             border: none;
-            font-size: 1.2rem;
-            padding: 0.3rem 0.6rem;
+            font-size: 1rem;
+            padding: 0.4rem 0.8rem;
             border-radius: var(--border-radius);
             cursor: pointer;
             margin-right: 5px;
+            transition: all 0.2s ease;
         }
         header .header-actions button:hover {
-            background: var(--secondary-color);
+            opacity: 0.8;
         }
         header .header-actions button:disabled {
             background: var(--gray-color);
@@ -122,30 +123,26 @@
 
         /* Card layout for content blocks */
         .card {
-            background-color: #1A202C; /* Darker than page bg */
+            background-color: var(--white-color);
             border-radius: var(--border-radius);
             box-shadow: var(--box-shadow);
             padding: 1.5rem;
             margin-bottom: 1.5rem;
-            border: 1px solid var(--gray-color);
-            transition: all 0.3s ease;
-        }
-        .card:hover {
-            border-color: var(--secondary-color);
+            border: 1px solid var(--light-gray-color);
         }
 
         .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
             padding-bottom: 1rem;
-            border-bottom: 1px solid var(--gray-color);
+            border-bottom: 1px solid var(--light-gray-color);
         }
 
         .page-header h2 {
             margin: 0;
-            color: var(--secondary-color);
+            color: var(--primary-color);
         }
 
         /* Form elements */
@@ -153,7 +150,7 @@
             width: 100%;
             padding: 0.75rem;
             border: 1px solid var(--gray-color);
-            background-color: var(--light-color);
+            background-color: var(--white-color);
             color: var(--dark-color);
             border-radius: var(--border-radius);
             font-size: 1rem;
@@ -163,7 +160,7 @@
         .input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: var(--secondary-color);
-            box-shadow: 0 0 0 3px rgba(214, 158, 46, 0.3);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
         }
 
 
@@ -179,31 +176,41 @@
 
         .btn {
             display: inline-block;
-            background: var(--secondary-color);
-            color: #1A202C; /* Dark text on bright button */
-            border: none;
-            padding: 0.75rem 1.5rem;
+            background: var(--primary-color);
+            color: var(--white-color) !important; /* Important to override other text colors */
+            border: 1px solid var(--primary-color);
+            padding: 0.5rem 1rem;
             border-radius: var(--border-radius);
             cursor: pointer;
-            font-size: 1rem;
-            font-weight: 700;
+            font-size: 0.9rem;
+            font-weight: 500;
             text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease-in-out;
         }
         .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            background: var(--secondary-color);
+            border-color: var(--secondary-color);
         }
 
-        .btn.ok { background-color: var(--success-color); color: var(--dark-color); }
-        .btn.warn { background-color: var(--danger-color); color: var(--dark-color); }
-        .btn.neutral { background-color: var(--gray-color); color: var(--dark-color); }
+        .btn.ok { background-color: var(--success-color); border-color: var(--success-color); }
+        .btn.warn { background-color: var(--danger-color); border-color: var(--danger-color); }
+        .btn.neutral { background-color: #6C757D; border-color: #6C757D; }
+        .btn.outline {
+            background-color: transparent;
+            color: var(--primary-color) !important;
+            border-color: var(--gray-color);
+        }
+        .btn.outline:hover {
+            background-color: var(--primary-color);
+            color: var(--white-color) !important;
+            border-color: var(--primary-color);
+        }
+
         .btn:disabled {
-            background-color: var(--gray-color);
+            background-color: var(--light-gray-color);
+            border-color: var(--light-gray-color);
+            color: var(--gray-color) !important;
             cursor: not-allowed;
-            transform: none;
             box-shadow: none;
         }
 
@@ -225,18 +232,17 @@
         }
 
         .table thead th {
-            background-color: var(--primary-color);
+            background-color: var(--light-gray-color);
             font-weight: bold;
-            color: var(--secondary-color);
-            text-transform: uppercase;
+            color: var(--dark-color);
         }
 
         .table tbody tr:nth-child(even) {
-            background-color: var(--light-color);
+            background-color: var(--white-color);
         }
 
         .table tbody tr:hover {
-            background-color: var(--gray-color);
+            background-color: var(--light-gray-color);
         }
 
         .table .actions {
@@ -245,9 +251,9 @@
         }
 
         /* Installment status styles */
-        .table tr.paid { border-right: 4px solid var(--success-color); background-color: rgba(56, 161, 105, 0.1) !important; }
-        .table tr.overdue { border-right: 4px solid var(--danger-color); background-color: rgba(229, 62, 62, 0.1) !important; }
-        .table tr.due-soon { border-right: 4px solid var(--warning-color); background-color: rgba(214, 158, 46, 0.1) !important; }
+        .table tr.paid { background-color: #d4edda !important; }
+        .table tr.overdue { background-color: #f8d7da !important; }
+        .table tr.due-soon { background-color: #fff3cd !important; }
 
 
         /* Modal styles */
@@ -257,7 +263,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.75);
+            background-color: rgba(0, 0, 0, 0.5);
             z-index: 100;
             display: flex;
             justify-content: center;
@@ -266,7 +272,7 @@
         }
 
         #modal-container {
-            background: var(--light-color);
+            background: var(--white-color);
             border-radius: var(--border-radius);
             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
             width: 90%;
@@ -318,9 +324,9 @@
 
         #modal-footer {
             padding: 1rem 1.5rem;
-            border-top: 1px solid var(--gray-color);
+            border-top: 1px solid var(--light-gray-color);
             text-align: left;
-            background-color: var(--primary-color);
+            background-color: var(--light-color);
         }
 
         /* Dashboard KPI cards */
@@ -892,15 +898,13 @@
                                 <option value="تجاري" ${isEdit && unit.type === 'تجاري' ? 'selected' : ''}>تجاري</option>
                             </select>
                         </div>
-                        <div class="grid grid-cols-2 gap-1">
-                            <div class="form-group">
-                                <label for="unit-area">المساحة (م²)</label>
-                                <input type="number" id="unit-area" class="input" value="${isEdit ? unit.area : ''}">
-                            </div>
-                            <div class="form-group">
-                                <label for="unit-price">السعر</label>
-                                <input type="number" id="unit-price" class="input" value="${isEdit ? unit.price : ''}">
-                            </div>
+                        <div class="form-group">
+                            <label for="unit-area">المساحة (م²)</label>
+                            <input type="number" id="unit-area" class="input" value="${isEdit ? unit.area : ''}">
+                        </div>
+                        <div class="form-group">
+                            <label for="unit-price">السعر</label>
+                            <input type="number" id="unit-price" class="input" value="${isEdit ? unit.price : ''}">
                         </div>
                          <div class="form-group">
                             <label for="unit-notes">ملاحظات</label>
@@ -1233,15 +1237,13 @@
                             <label for="customer-name">الاسم</label>
                             <input type="text" id="customer-name" class="input" value="${isEdit ? customer.name : ''}" required>
                         </div>
-                        <div class="grid grid-cols-2 gap-1">
-                            <div class="form-group">
-                                <label for="customer-phone">الهاتف</label>
-                                <input type="tel" id="customer-phone" class="input" value="${isEdit ? customer.phone || '' : ''}">
-                            </div>
-                            <div class="form-group">
-                                <label for="customer-nationalId">الرقم القومي</label>
-                                <input type="text" id="customer-nationalId" class="input" value="${isEdit ? customer.nationalId || '' : ''}">
-                            </div>
+                        <div class="form-group">
+                            <label for="customer-phone">الهاتف</label>
+                            <input type="tel" id="customer-phone" class="input" value="${isEdit ? customer.phone || '' : ''}">
+                        </div>
+                        <div class="form-group">
+                            <label for="customer-nationalId">الرقم القومي</label>
+                            <input type="text" id="customer-nationalId" class="input" value="${isEdit ? customer.nationalId || '' : ''}">
                         </div>
                         <div class="form-group">
                             <label for="customer-notes">ملاحظات</label>
@@ -1375,15 +1377,13 @@
                         </div>
                         <hr>
                         <h4>تفاصيل الأقساط</h4>
-                        <div class="grid grid-cols-2 gap-1">
-                            <div class="form-group">
-                                <label for="contract-installments-num">عدد الأقساط</label>
-                                <input type="number" id="contract-installments-num" class="input" value="12">
-                            </div>
-                            <div class="form-group">
-                                <label for="contract-start-date">تاريخ أول قسط</label>
-                                <input type="date" id="contract-start-date" class="input" value="${today()}">
-                            </div>
+                        <div class="form-group">
+                            <label for="contract-installments-num">عدد الأقساط</label>
+                            <input type="number" id="contract-installments-num" class="input" value="12">
+                        </div>
+                        <div class="form-group">
+                            <label for="contract-start-date">تاريخ أول قسط</label>
+                            <input type="date" id="contract-start-date" class="input" value="${today()}">
                         </div>
                         <div id="installments-preview"></div>
                     </form>
