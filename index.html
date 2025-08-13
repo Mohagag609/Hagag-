@@ -759,6 +759,9 @@
                         <table class="table">
                             <thead>
                                 <tr>
+                                    <th>العمارة</th>
+                                    <th>الدور</th>
+                                    <th>اسم الوحدة</th>
                                     <th>الكود</th>
                                     <th>النوع</th>
                                     <th>المساحة (م²)</th>
@@ -770,6 +773,9 @@
                             <tbody>
                                 ${app.state.units.map(unit => `
                                     <tr>
+                                        <td>${unit.building_number || '—'}</td>
+                                        <td>${unit.floor_number || '—'}</td>
+                                        <td>${unit.unit_name || '—'}</td>
                                         <td>${unit.code}</td>
                                         <td>${unit.unit_type}</td>
                                         <td>${unit.area}</td>
@@ -797,9 +803,23 @@
 
                 const bodyHtml = `
                     <form id="unit-form">
+                        <div class="grid grid-cols-2 gap-1">
+                            <div class="form-group">
+                                <label for="unit-building-number">رقم العمارة</label>
+                                <input type="text" id="unit-building-number" class="input" value="${isEdit ? unit.building_number || '' : ''}">
+                            </div>
+                            <div class="form-group">
+                                <label for="unit-floor-number">رقم الدور</label>
+                                <input type="text" id="unit-floor-number" class="input" value="${isEdit ? unit.floor_number || '' : ''}">
+                            </div>
+                        </div>
                         <div class="form-group">
-                            <label for="unit-code">كود الوحدة</label>
-                            <input type="text" id="unit-code" class="input" value="${isEdit ? unit.code : ''}" placeholder="مثال: U101">
+                            <label for="unit-name">اسم الوحدة / رقم الشقة</label>
+                            <input type="text" id="unit-name" class="input" value="${isEdit ? unit.unit_name || '' : ''}" placeholder="مثال: شقة 101">
+                        </div>
+                        <div class="form-group">
+                            <label for="unit-code">كود الوحدة (تلقائي)</label>
+                            <input type="text" id="unit-code" class="input" value="${isEdit ? unit.code : ''}" placeholder="يتم توليده تلقائياً">
                         </div>
                         <div class="form-group">
                             <label for="unit-type">نوع الوحدة</label>
@@ -832,11 +852,19 @@
 
             function handleSaveUnit(unitId) {
                 const isEdit = unitId !== null;
-                const unitCode = document.getElementById('unit-code').value.trim();
+
+                const building_number = document.getElementById('unit-building-number').value.trim();
+                const floor_number = document.getElementById('unit-floor-number').value.trim();
+                const unit_name = document.getElementById('unit-name').value.trim();
+                let unitCode = document.getElementById('unit-code').value.trim();
+
+                if (!building_number || !floor_number || !unit_name) {
+                    alert('الرجاء ملء حقول العمارة، الدور، واسم الوحدة.');
+                    return;
+                }
 
                 if (!unitCode) {
-                    alert('كود الوحدة مطلوب.');
-                    return;
+                    unitCode = `B${building_number}-F${floor_number}-${unit_name.replace(/\s+/g, '')}`;
                 }
 
                 const codeExists = app.state.units.some(u => u.code === unitCode && u.id !== unitId);
@@ -848,11 +876,14 @@
                 const unitData = {
                     id: isEdit ? unitId : uid('unit'),
                     code: unitCode,
+                    unit_name: unit_name,
+                    floor_number: floor_number,
+                    building_number: building_number,
                     unit_type: document.getElementById('unit-type').value,
                     area: parseNumber(document.getElementById('unit-area').value),
                     price: parseNumber(document.getElementById('unit-price').value),
                     notes: document.getElementById('unit-notes').value,
-                    partners: isEdit ? app.state.units.find(u => u.id === unitId).partners : []
+                    partners: isEdit ? (app.state.units.find(u => u.id === unitId).partners || []) : []
                 };
 
                 if (isEdit) {
@@ -1277,6 +1308,16 @@
                             <label for="contract-downpayment">دفعة مقدمة</label>
                             <input type="number" id="contract-downpayment" class="input" value="0">
                         </div>
+                        <div class="grid grid-cols-2 gap-1">
+                            <div class="form-group">
+                                <label for="contract-broker-commission">عمولة الوسيط</label>
+                                <input type="number" id="contract-broker-commission" class="input" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="contract-annual-fee">رسوم سنوية</label>
+                                <input type="number" id="contract-annual-fee" class="input" value="0">
+                            </div>
+                        </div>
                         <hr>
                         <h4>تفاصيل الأقساط</h4>
                         <div class="form-group">
@@ -1362,7 +1403,9 @@
                     customer_id: document.getElementById('contract-customer').value,
                     total_price: parseNumber(document.getElementById('contract-price').value),
                     down_payment: parseNumber(document.getElementById('contract-downpayment').value),
-                    contract_date: today()
+                    contract_date: today(),
+                    broker_commission: parseNumber(document.getElementById('contract-broker-commission').value),
+                    annual_fee: parseNumber(document.getElementById('contract-annual-fee').value)
                 };
 
                 if (!contractData.unit_id || !contractData.customer_id || !contractData.total_price) {
@@ -1418,6 +1461,8 @@
                     <p><strong>السعر الإجمالي:</strong> ${egp(contract.total_price)}</p>
                     <p><strong>إجمالي المدفوع:</strong> ${egp(totalPaid)}</p>
                     <p><strong>المتبقي:</strong> ${egp(contract.total_price - totalPaid)}</p>
+                    <p><strong>عمولة الوسيط:</strong> ${egp(contract.broker_commission)}</p>
+                    <p><strong>رسوم سنوية:</strong> ${egp(contract.annual_fee)}</p>
                     <hr>
                     <h4>جدول الأقساط</h4>
                     <div class="table-container" style="max-height: 300px; overflow-y: auto;">
