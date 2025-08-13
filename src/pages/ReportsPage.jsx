@@ -154,14 +154,14 @@ function ReportsPage() {
       <h3 style={{ marginBottom: '12px' }}>1. اختر نوع التقرير</h3>
       <div className="grid grid-3" style={{gap: '12px', marginBottom: '16px'}}>
         <div className="card">
-            <h4 style="margin-top:0; margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:4px;">تقارير مالية</h4>
+            <h4 style={{marginTop:0, marginBottom:'8px', borderBottom:'1px solid var(--line)', paddingBottom:'4px'}}>تقارير مالية</h4>
             <div className="tools" style={{flexDirection: 'column', gap: '8px', alignItems: 'stretch'}}>
                 <button className={`btn gold report-btn ${selectedReportType === 'payments_monthly' ? 'active' : ''}`} onClick={()=>handleSelectReport('payments_monthly')}>مدفوعات شهرية</button>
                 <button className={`btn gold report-btn ${selectedReportType === 'cashflow' ? 'active' : ''}`} onClick={()=>handleSelectReport('cashflow')}>التدفقات النقدية العامة</button>
             </div>
         </div>
         <div className="card">
-            <h4 style="margin-top:0; margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:4px;">تقارير الشركاء</h4>
+            <h4 style={{marginTop:0, marginBottom:'8px', borderBottom:'1px solid var(--line)', paddingBottom:'4px'}}>تقارير الشركاء</h4>
             <div className="tools" style={{flexDirection: 'column', gap: '8px', alignItems: 'stretch'}}>
                 <button className={`btn gold report-btn ${selectedReportType === 'partner_profits' ? 'active' : ''}`} onClick={()=>handleSelectReport('partner_profits')}>تفاصيل أرباح الشركاء</button>
                 <button className={`btn gold report-btn ${selectedReportType === 'partner_cashflow' ? 'active' : ''}`} onClick={()=>handleSelectReport('partner_cashflow')}>ملخص تدفقات الشركاء</button>

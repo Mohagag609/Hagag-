@@ -1,6 +1,6 @@
 import React, { useContext, useState, useMemo } from 'react';
 import AppContext from '../AppContext';
-import { uid, egp, parseNumber } from '../utils';
+import { uid, egp, parseNumber, calculateUnitRemaining } from '../utils';
 
 import ManagePartnersModal from '../components/ManagePartnersModal';
 
@@ -21,11 +21,27 @@ function UnitsPage() {
 
   const handleAddUnit = (e) => {
     e.preventDefault();
-    const { code, name, totalPrice, type, status, floor, building } = formState;
-    if (!code.trim() || !totalPrice) {
-      alert('الرجاء إدخال الكود والسعر الكلي.');
+    let { code, name, totalPrice, type, status, floor, building } = formState;
+
+    if (!code.trim()) {
+        if (!building.trim() || !floor.trim() || !name.trim()) {
+            return alert('لإنشاء كود تلقائي، الرجاء إدخال اسم الوحدة ورقم الدور والعمارة.');
+        }
+        const san_b = building.trim().replace(/\s/g, '');
+        const san_f = floor.trim().replace(/\s/g, '');
+        const san_n = name.trim().replace(/\s/g, '');
+        code = `${san_b}-${san_f}-${san_n}`;
+    }
+
+    if (!totalPrice) {
+      alert('الرجاء إدخال السعر الكلي للوحدة');
       return;
     }
+
+    if (state.units.some(u => u.code.toLowerCase() === code.toLowerCase())) {
+        return alert('هذا الكود مستخدم بالفعل. الرجاء إدخال كود فريد.');
+    }
+
     const newUnit = {
       id: uid('U'),
       code: code.trim(),
@@ -98,7 +114,7 @@ function UnitsPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>الكود</th><th>الاسم</th><th>النوع</th><th>السعر</th><th>الحالة</th><th></th>
+                <th>الكود</th><th>الاسم</th><th>النوع</th><th>السعر</th><th>المتبقي</th><th>الحالة</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -108,6 +124,7 @@ function UnitsPage() {
                   <td>{u.name}</td>
                   <td>{u.type || 'سكني'}</td>
                   <td>{egp(u.totalPrice)}</td>
+                  <td>{egp(calculateUnitRemaining(u, state.contracts, state.payments))}</td>
                   <td>{u.status}</td>
                   <td>
                     <button className="btn" onClick={() => setManagingUnit(u)} style={{marginLeft: '4px'}}>

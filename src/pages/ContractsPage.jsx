@@ -1,20 +1,20 @@
 import React, { useState, useContext, useMemo } from 'react';
 import AppContext from '../AppContext';
 import { uid, egp, parseNumber, today } from '../utils';
+import ContractDetailsModal from '../components/ContractDetailsModal';
 
 const initialFormState = {
   unitId: '', customerId: '', totalPrice: 0, downPayment: '',
-  maintenanceDeposit: '', brokerPercent: '', type: 'شهري', count: '',
+  brokerPercent: '', type: 'شهري', count: '',
   extraAnnual: '', start: today()
 };
 
 function FinancialSummary({ formState }) {
   const total = parseNumber(formState.totalPrice);
   const down = parseNumber(formState.downPayment);
-  const maint = parseNumber(formState.maintenanceDeposit);
   const brokerP = parseNumber(formState.brokerPercent);
   const brokerAmt = (total * brokerP / 100);
-  const remaining = total - down - maint - brokerAmt;
+  const remaining = total - down - brokerAmt;
 
   return (
     <div className="card" style={{ marginTop: '8px', background: 'var(--bg)', padding: '10px' }}>
@@ -23,7 +23,6 @@ function FinancialSummary({ formState }) {
         <tbody>
           <tr><td style={{ color: 'var(--muted)' }}>(+) سعر الوحدة</td><td style={{ textAlign: 'left' }}>{egp(total)}</td></tr>
           <tr><td style={{ color: 'var(--muted)' }}>(-) المقدم</td><td style={{ textAlign: 'left' }}>{egp(down)}</td></tr>
-          <tr><td style={{ color: 'var(--muted)' }}>(-) وديعة الصيانة</td><td style={{ textAlign: 'left' }}>{egp(maint)}</td></tr>
           <tr><td style={{ color: 'var(--muted)' }}>(-) عمولة السمسار</td><td style={{ textAlign: 'left' }}>{egp(brokerAmt)}</td></tr>
           <tr style={{ borderTop: '1px solid var(--line)', fontWeight: 'bold', fontSize: '13px' }}>
             <td>(=) المبلغ المتبقي للأقساط</td>
@@ -38,6 +37,8 @@ function FinancialSummary({ formState }) {
 function ContractsPage() {
   const { state, setState } = useContext(AppContext);
   const [formState, setFormState] = useState(initialFormState);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewingContract, setViewingContract] = useState(null);
 
   const handleInputChange = (e) => {
     const { id, value } = e.target;
@@ -56,25 +57,24 @@ function ContractsPage() {
 
   const handleCreateContract = (e) => {
     e.preventDefault();
-    const { unitId, customerId, totalPrice, downPayment, maintenanceDeposit, brokerPercent, type, count, extraAnnual, start } = formState;
+    const { unitId, customerId, totalPrice, downPayment, brokerPercent, type, count, extraAnnual, start } = formState;
 
     if (!unitId || !customerId) return alert('اختر الوحدة والعميل');
     const total = parseNumber(totalPrice);
     const down = parseNumber(downPayment);
-    const maint = parseNumber(maintenanceDeposit);
     const brokerP = parseNumber(brokerPercent);
     const numCount = parseInt(count || '0', 10);
     const numExtra = parseInt(extraAnnual || '0', 10);
     const brokerAmt = Math.round((total * brokerP / 100) * 100) / 100;
-    const remain = Math.max(0, total - down - maint - brokerAmt);
+    const remain = Math.max(0, total - down - brokerAmt);
 
     if (numCount <= 0 && remain > 0) return alert('عدد الدفعات غير صالح للمبلغ المتبقي.');
 
     const newContract = {
       id: uid('CT'), code: 'CTR-' + String(state.contracts.length + 1).padStart(5, '0'),
-      unitId, customerId, totalPrice: total, downPayment: down, maintenanceDeposit: maint,
+      unitId, customerId, totalPrice: total, downPayment: down,
       brokerPercent: brokerP, brokerAmount: brokerAmt, type, count: numCount,
-      extraAnnual: Math.min(Math.max(numExtra, 0), 3), start
+      extraAnnual: Math.min(Math.max(numExtra, 0), 3), start, status: 'active'
     };
 
     const newInstallments = [];
@@ -105,6 +105,37 @@ function ContractsPage() {
     alert(`تم إنشاء العقد ${newContract.code} بنجاح.`);
   };
 
+  const getUnitCode = (unitId) => state.units.find(u => u.id === unitId)?.code || '—';
+  const getCustomerName = (customerId) => state.customers.find(c => c.id === customerId)?.name || '—';
+
+  const handleCancelContract = (contractId) => {
+    if (!window.confirm('هل أنت متأكد من إلغاء هذا العقد؟ سيتم إعادة حالة الوحدة إلى "متاحة" ولن يتم حذف العقد كسجل تاريخي.')) return;
+
+    setState(prev => {
+      const contract = prev.contracts.find(c => c.id === contractId);
+      if (!contract) return prev;
+
+      const updatedContracts = prev.contracts.map(c =>
+        c.id === contractId ? { ...c, status: 'cancelled' } : c
+      );
+      const updatedUnits = prev.units.map(u =>
+        u.id === contract.unitId ? { ...u, status: 'متاحة' } : u
+      );
+
+      return { ...prev, contracts: updatedContracts, units: updatedUnits };
+    });
+    setViewingContract(prev => ({...prev, status: 'cancelled'})); // Update modal view
+  };
+
+  const filteredContracts = useMemo(() => {
+    if (!searchQuery) return state.contracts;
+    const lowerCaseQuery = searchQuery.toLowerCase();
+    return state.contracts.filter(c => {
+      const searchable = `${c.code||''} ${getUnitCode(c.unitId)} ${getCustomerName(c.customerId)}`.toLowerCase();
+      return searchable.includes(lowerCaseQuery);
+    });
+  }, [state.contracts, state.units, state.customers, searchQuery]);
+
   return (
     <div className="grid">
       <div className="card">
@@ -121,7 +152,6 @@ function ContractsPage() {
             </select>
             <input className="input" id="totalPrice" value={formState.totalPrice} placeholder="سعر الوحدة (تلقائي)" readOnly />
             <input className="input" id="downPayment" value={formState.downPayment} onChange={handleInputChange} placeholder="المقدم" type="number" />
-            <input className="input" id="maintenanceDeposit" value={formState.maintenanceDeposit} onChange={handleInputChange} placeholder="وديعة الصيانة" type="number" />
             <input className="input" id="brokerPercent" value={formState.brokerPercent} onChange={handleInputChange} placeholder="نسبة السمسار %" type="number" />
             <select className="select" id="type" value={formState.type} onChange={handleInputChange}>
               <option>شهري</option><option>ربع سنوي</option><option>نصف سنوي</option><option>سنوي</option>
@@ -137,25 +167,43 @@ function ContractsPage() {
         </form>
       </div>
       <div className="card">
-        <h3>العقود</h3>
+        <h3>العقود ({filteredContracts.length})</h3>
+        <input
+          className="input"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="بحث بكود العقد, الوحدة, أو العميل..."
+          style={{marginBottom: '8px'}}
+        />
         <div style={{maxHeight: '500px', overflowY: 'auto'}}>
         <table className="table">
           <thead><tr><th>كود العقد</th><th>الوحدة</th><th>العميل</th><th>السعر</th><th>تاريخ البدء</th><th></th></tr></thead>
           <tbody>
-            {state.contracts.map(c => (
-              <tr key={c.id}>
-                <td>{c.code}</td>
-                <td>{state.units.find(u=>u.id === c.unitId)?.code || '—'}</td>
-                <td>{state.customers.find(cust=>cust.id === c.customerId)?.name || '—'}</td>
+            {filteredContracts.map(c => (
+              <tr key={c.id} style={{ opacity: c.status === 'cancelled' ? 0.5 : 1 }}>
+                <td>{c.code}{c.status === 'cancelled' && <span className="badge warn" style={{marginRight: '8px'}}>ملغى</span>}</td>
+                <td>{getUnitCode(c.unitId)}</td>
+                <td>{getCustomerName(c.customerId)}</td>
                 <td>{egp(c.totalPrice)}</td>
                 <td>{c.start}</td>
-                <td>{/* Details button will go here */}</td>
+                <td>
+                  <button className="btn" onClick={() => setViewingContract(c)}>
+                    تفاصيل
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
         </div>
       </div>
+      {viewingContract && (
+        <ContractDetailsModal
+          contract={viewingContract}
+          onClose={() => setViewingContract(null)}
+          onCancelContract={handleCancelContract}
+        />
+      )}
     </div>
   );
 }

@@ -84,9 +84,11 @@ function InstallmentsPage() {
                         className="btn"
                         onClick={() => setReschedulingInstallment({...i, unitCode: getUnitCode(i.unitId)})}
                         disabled={i.status === 'مدفوع'}
+                        style={{marginLeft: '4px'}}
                       >
                         إعادة جدولة
                       </button>
+                      <button className="btn warn" onClick={() => handleDeleteInstallment(i.id)}>حذف</button>
                   </td>
                 </tr>
               )
@@ -113,6 +115,7 @@ function InstallmentsPage() {
 }
 
   const handleSavePayment = (installment, paidAmount) => {
+    saveState();
     const newPayment = {
       id: uid('P'),
       unitId: installment.unitId,
@@ -148,6 +151,7 @@ function InstallmentsPage() {
   };
 
   const handleSaveReschedule = (installment, newAmount, newDate) => {
+    saveState();
     setState(prev => {
       const remainList = prev.installments
         .filter(x => x.unitId === installment.unitId && x.status !== 'مدفوع')
@@ -159,11 +163,9 @@ function InstallmentsPage() {
       const share = others.length ? Math.round((diff / others.length) * 100) / 100 : 0;
 
       const updatedInstallments = prev.installments.map(i => {
-        // Update the rescheduled installment itself
         if (i.id === installment.id) {
           return { ...i, amount: newAmount, dueDate: newDate, originalAmount: i.originalAmount != null ? i.originalAmount : i.amount };
         }
-        // Update subsequent installments
         if (others.some(o => o.id === i.id)) {
           return { ...i, amount: Math.round((i.amount + share) * 100) / 100, originalAmount: i.originalAmount != null ? i.originalAmount : i.amount };
         }
@@ -175,4 +177,95 @@ function InstallmentsPage() {
     alert('تمت إعادة الجدولة وتوزيع الفرق على الأقساط التالية.');
     setReschedulingInstallment(null);
   };
+
+  const handleDeleteInstallment = (id) => {
+    const hasPayments = state.payments.some(p => p.installmentId === id);
+    if (hasPayments) {
+      return alert('لا يمكن حذف هذا القسط لوجود دفعات مسجلة عليه.');
+    }
+    if (window.confirm('هل أنت متأكد من حذف هذا القسط؟ قد يؤثر هذا على الحسابات الإجمالية للعقد.')) {
+      saveState();
+      setState(prev => ({
+        ...prev,
+        installments: prev.installments.filter(i => i.id !== id)
+      }));
+    }
+  };
+
+  return (
+    <div className="card">
+      <h3>الأقساط ({filteredInstallments.length})</h3>
+       <input
+          className="input"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="بحث بالوحدة, الحالة, أو تاريخ الاستحقاق..."
+          style={{marginBottom: '8px'}}
+        />
+      <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>الوحدة</th><th>النوع</th><th>المبلغ</th><th>المتبقي</th><th>المسدد</th>
+              <th>الاستحقاق</th><th>تاريخ السداد</th><th>الحالة</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredInstallments.map(i => {
+              const paidSoFar = state.payments
+                .filter(p => p.installmentId === i.id)
+                .reduce((sum, p) => sum + p.amount, 0);
+              return (
+                <tr key={i.id} className={getRowClass(i)}>
+                  <td>{getUnitCode(i.unitId)}</td>
+                  <td>{i.type || ''}</td>
+                  <td>{egp(i.originalAmount != null ? i.originalAmount : i.amount)}</td>
+                  <td>{egp(i.amount)}</td>
+                  <td>{egp(paidSoFar)}</td>
+                  <td>{i.dueDate || ''}</td>
+                  <td>{i.paymentDate || '—'}</td>
+                  <td>{i.status || 'غير مدفوع'}</td>
+                  <td>
+                    <button
+                      className="btn ok"
+                      onClick={() => setPayingInstallment({...i, unitCode: getUnitCode(i.unitId)})}
+                      disabled={i.status === 'مدفوع'}
+                        style={{marginLeft: '4px'}}
+                    >
+                      دفع
+                    </button>
+                      <button
+                        className="btn"
+                        onClick={() => setReschedulingInstallment({...i, unitCode: getUnitCode(i.unitId)})}
+                        disabled={i.status === 'مدفوع'}
+                        style={{marginLeft: '4px'}}
+                      >
+                        إعادة جدولة
+                      </button>
+                      <button className="btn warn" onClick={() => handleDeleteInstallment(i.id)}>حذف</button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {payingInstallment && (
+        <PayInstallmentModal
+          installment={payingInstallment}
+          onSave={handleSavePayment}
+          onClose={() => setPayingInstallment(null)}
+        />
+      )}
+      {reschedulingInstallment && (
+        <RescheduleModal
+          installment={reschedulingInstallment}
+          onSave={handleSaveReschedule}
+          onClose={() => setReschedulingInstallment(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default InstallmentsPage;
