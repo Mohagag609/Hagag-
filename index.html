@@ -381,10 +381,6 @@
     <header>
         <div class="header-content">
             <h1>برنامج إدارة الاستثمار العقاري</h1>
-            <div class="header-actions">
-                <button id="undo-btn" title="تراجع (Ctrl+Z)">↪️</button>
-                <button id="redo-btn" title="إعادة (Ctrl+Y)">↩️</button>
-            </div>
         </div>
         <nav>
             <button class="nav-btn" data-page="dashboard-page">الرئيسية</button>
@@ -457,12 +453,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             // --- GLOBAL APPLICATION OBJECT ---
             const app = {
-                state: null, // Will be loaded from localStorage
-                undoStack: [],
-                redoStack: [],
-                config: {
-                    maxUndoSteps: 50,
-                }
+                state: null, // Will be loaded from the backend
+                config: {}
             };
 
             const initialState = {
@@ -498,88 +490,27 @@
             // --- CORE SYSTEMS ---
 
             /**
-             * Saves the current application state to localStorage.
-             */
-            function saveState() {
-                try {
-                    localStorage.setItem('realEstateState', JSON.stringify(app.state));
-                } catch (e) {
-                    console.error("Error saving state to localStorage:", e);
-                    alert("حدث خطأ أثناء حفظ البيانات. قد لا يتم حفظ التغييرات الأخيرة.");
-                }
-            }
-
-            /**
-             * Loads state from localStorage or initializes with a default state.
+             * Loads all data from the backend API.
              */
             function loadState() {
                 try {
-                    const savedState = localStorage.getItem('realEstateState');
-                    if (savedState) {
-                        app.state = JSON.parse(savedState);
-                        // Data migration: ensure all expected arrays exist
-                        Object.keys(initialState).forEach(key => {
-                            if (!app.state[key]) {
-                                app.state[key] = initialState[key];
-                            }
-                        });
-                    } else {
-                        app.state = { ...initialState };
+                    const response = await fetch('http://localhost:8000/api/all-data/');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
+                    const data = await response.json();
+                    app.state = data;
+                    // Ensure all keys exist even if backend returns empty lists
+                     Object.keys(initialState).forEach(key => {
+                        if (!app.state[key]) {
+                            app.state[key] = initialState[key];
+                        }
+                    });
                 } catch (e) {
-                    console.error("Error loading state from localStorage:", e);
+                    console.error("Error loading state from backend:", e);
                     app.state = { ...initialState };
-                    alert("حدث خطأ أثناء تحميل البيانات. تم البدء بحالة افتراضية.");
+                    alert("فشل الاتصال بالخادم. سيتم استخدام بيانات فارغة. يرجى التأكد من تشغيل الخادم الخلفي.");
                 }
-            }
-
-            /**
-             * Records the current state for undo functionality.
-             * This should be called *before* any state modification.
-             */
-            function recordStateForUndo() {
-                app.undoStack.push(JSON.stringify(app.state));
-                // Clear the redo stack whenever a new action is taken
-                app.redoStack = [];
-                // Enforce a limit on the undo history
-                if (app.undoStack.length > app.config.maxUndoSteps) {
-                    app.undoStack.shift();
-                }
-                updateUndoRedoButtons();
-            }
-
-            /**
-             * Handles the Undo action.
-             */
-            function handleUndo() {
-                if (app.undoStack.length === 0) return;
-                const lastState = app.undoStack.pop();
-                app.redoStack.push(JSON.stringify(app.state));
-                app.state = JSON.parse(lastState);
-                saveState();
-                renderCurrentPage(); // Re-render the UI with the restored state
-                updateUndoRedoButtons();
-            }
-
-            /**
-             * Handles the Redo action.
-             */
-            function handleRedo() {
-                if (app.redoStack.length === 0) return;
-                const nextState = app.redoStack.pop();
-                app.undoStack.push(JSON.stringify(app.state));
-                app.state = JSON.parse(nextState);
-                saveState();
-                renderCurrentPage(); // Re-render the UI with the restored state
-                updateUndoRedoButtons();
-            }
-
-            /**
-             * Updates the enabled/disabled state of undo/redo buttons.
-             */
-            function updateUndoRedoButtons() {
-                undoBtn.disabled = app.undoStack.length === 0;
-                if (redoBtn) redoBtn.disabled = app.redoStack.length === 0;
             }
 
 
@@ -920,58 +851,64 @@
                 document.getElementById('save-unit-btn').addEventListener('click', () => handleSaveUnit(unitId));
             }
 
-            function handleSaveUnit(unitId) {
+            async function handleSaveUnit(unitId) {
                 const isEdit = unitId !== null;
-                let unitCode = document.getElementById('unit-code').value.trim();
+                const unitCode = document.getElementById('unit-code').value.trim();
 
+                // Basic validation, backend will do the rest
                 if (!unitCode) {
-                    unitCode = `U${app.state.nextUnitCode}`;
-                } else {
-                    const codeExists = app.state.units.some(u => u.code.toLowerCase() === unitCode.toLowerCase() && u.id !== unitId);
-                    if (codeExists) {
-                        alert('كود الوحدة موجود بالفعل. يرجى إدخال كود فريد.');
-                        return;
-                    }
-                }
-
-                recordStateForUndo();
-
-                const unitData = {
-                    code: unitCode,
-                    type: document.getElementById('unit-type').value,
-                    area: parseNumber(document.getElementById('unit-area').value),
-                    price: parseNumber(document.getElementById('unit-price').value),
-                    notes: document.getElementById('unit-notes').value,
-                    partners: isEdit ? app.state.units.find(u => u.id === unitId).partners : []
-                };
-
-                if (isEdit) {
-                    app.state.units = app.state.units.map(u => u.id === unitId ? { ...u, ...unitData } : u);
-                } else {
-                    unitData.id = uid('u');
-                    app.state.units.push(unitData);
-                    if (unitCode === `U${app.state.nextUnitCode}`) {
-                        app.state.nextUnitCode++;
-                    }
-                }
-
-                saveState();
-                hideModal();
-                renderPage('units-page');
-            }
-
-            function handleDeleteUnit(unitId) {
-                const isSold = app.state.contracts.some(c => c.unitId === unitId);
-                if (isSold) {
-                    alert('لا يمكن حذف وحدة مباعة. يجب حذف العقد المرتبط بها أولاً.');
+                    alert('كود الوحدة مطلوب.');
                     return;
                 }
 
-                if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه الوحدة؟')) {
-                    recordStateForUndo();
-                    app.state.units = app.state.units.filter(u => u.id !== unitId);
-                    saveState();
+                const unitData = {
+                    code: unitCode,
+                    unit_type: document.getElementById('unit-type').value,
+                    area: parseNumber(document.getElementById('unit-area').value),
+                    price: parseNumber(document.getElementById('unit-price').value),
+                    notes: document.getElementById('unit-notes').value,
+                };
+
+                const url = isEdit ? `http://localhost:8000/api/units/${unitId}` : 'http://localhost:8000/api/units/';
+                const method = isEdit ? 'PUT' : 'POST';
+
+                try {
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(unitData)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to save unit');
+                    }
+
+                    await loadState();
+                    hideModal();
                     renderPage('units-page');
+
+                } catch (e) {
+                    console.error('Save unit error:', e);
+                    alert(`فشل حفظ الوحدة: ${e.message}`);
+                }
+            }
+
+            async function handleDeleteUnit(unitId) {
+                // The backend should handle the logic of not deleting a sold unit.
+                if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه الوحدة؟')) {
+                    try {
+                        const response = await fetch(`http://localhost:8000/api/units/${unitId}`, { method: 'DELETE' });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to delete unit');
+                        }
+                        await loadState();
+                        renderPage('units-page');
+                    } catch (e) {
+                        console.error('Delete unit error:', e);
+                        alert(`فشل حذف الوحدة: ${e.message}`);
+                    }
                 }
             }
 
@@ -1144,14 +1081,12 @@
                 document.getElementById('save-partner-btn').addEventListener('click', () => handleSavePartner(partnerId));
             }
 
-            function handleSavePartner(partnerId) {
+            async function handleSavePartner(partnerId) {
                 const name = document.getElementById('partner-name').value.trim();
                 if (!name) {
                     alert('اسم الشريك مطلوب.');
                     return;
                 }
-
-                recordStateForUndo();
 
                 const partnerData = {
                     name,
@@ -1159,30 +1094,38 @@
                     notes: document.getElementById('partner-notes').value.trim()
                 };
 
-                if (partnerId) {
-                    app.state.partners = app.state.partners.map(p => p.id === partnerId ? { ...p, ...partnerData } : p);
-                } else {
-                    partnerData.id = uid('p');
-                    app.state.partners.push(partnerData);
-                }
+                const url = partnerId ? `http://localhost:8000/api/partners/${partnerId}` : 'http://localhost:8000/api/partners/';
+                const method = partnerId ? 'PUT' : 'POST';
 
-                saveState();
-                hideModal();
-                renderPage('partners-page');
+                try {
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(partnerData)
+                    });
+                    if (!response.ok) throw new Error('Failed to save partner');
+
+                    await loadState();
+                    hideModal();
+                    renderPage('partners-page');
+                } catch (e) {
+                    alert(`فشل حفظ الشريك: ${e.message}`);
+                }
             }
 
-            function handleDeletePartner(partnerId) {
-                const isAssigned = app.state.units.some(u => u.partners.some(p => p.partnerId === partnerId));
-                if (isAssigned) {
-                    alert('لا يمكن حذف هذا الشريك لأنه معين لوحدة واحدة على الأقل.');
-                    return;
-                }
-
+            async function handleDeletePartner(partnerId) {
                 if (window.confirm('هل أنت متأكد من حذف هذا الشريك؟')) {
-                    recordStateForUndo();
-                    app.state.partners = app.state.partners.filter(p => p.id !== partnerId);
-                    saveState();
-                    renderPage('partners-page');
+                    try {
+                        const response = await fetch(`http://localhost:8000/api/partners/${partnerId}`, { method: 'DELETE' });
+                        if (!response.ok) {
+                             const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to delete partner');
+                        }
+                        await loadState();
+                        renderPage('partners-page');
+                    } catch (e) {
+                        alert(`فشل حذف الشريك: ${e.message}`);
+                    }
                 }
             }
 
@@ -1257,46 +1200,52 @@
                 document.getElementById('save-customer-btn').addEventListener('click', () => handleSaveCustomer(customerId));
             }
 
-            function handleSaveCustomer(customerId) {
+            async function handleSaveCustomer(customerId) {
                 const name = document.getElementById('customer-name').value.trim();
                 if (!name) {
                     alert('اسم العميل مطلوب.');
                     return;
                 }
 
-                recordStateForUndo();
-
                 const customerData = {
                     name,
                     phone: document.getElementById('customer-phone').value.trim(),
-                    nationalId: document.getElementById('customer-nationalId').value.trim(),
+                    national_id: document.getElementById('customer-national-id').value.trim(),
                     notes: document.getElementById('customer-notes').value.trim()
                 };
 
-                if (customerId) {
-                    app.state.customers = app.state.customers.map(c => c.id === customerId ? { ...c, ...customerData } : c);
-                } else {
-                    customerData.id = uid('c');
-                    app.state.customers.push(customerData);
-                }
+                const url = customerId ? `http://localhost:8000/api/customers/${customerId}` : 'http://localhost:8000/api/customers/';
+                const method = customerId ? 'PUT' : 'POST';
 
-                saveState();
-                hideModal();
-                renderPage('customers-page');
+                try {
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(customerData)
+                    });
+                    if (!response.ok) throw new Error('Failed to save customer');
+
+                    await loadState();
+                    hideModal();
+                    renderPage('customers-page');
+                } catch (e) {
+                    alert(`فشل حفظ العميل: ${e.message}`);
+                }
             }
 
-            function handleDeleteCustomer(customerId) {
-                const isAssigned = app.state.contracts.some(c => c.customerId === customerId);
-                if (isAssigned) {
-                    alert('لا يمكن حذف هذا العميل لأنه مرتبط بعقد.');
-                    return;
-                }
-
+            async function handleDeleteCustomer(customerId) {
                 if (window.confirm('هل أنت متأكد من حذف هذا العميل؟')) {
-                    recordStateForUndo();
-                    app.state.customers = app.state.customers.filter(c => c.id !== customerId);
-                    saveState();
-                    renderPage('customers-page');
+                    try {
+                        const response = await fetch(`http://localhost:8000/api/customers/${customerId}`, { method: 'DELETE' });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to delete customer');
+                        }
+                        await loadState();
+                        renderPage('customers-page');
+                    } catch (e) {
+                        alert(`فشل حذف العميل: ${e.message}`);
+                    }
                 }
             }
 
@@ -1447,58 +1396,38 @@
                 return installments;
             }
 
-            function handleSaveContract() {
-                const unitId = document.getElementById('contract-unit').value;
-                const customerId = document.getElementById('contract-customer').value;
-                const totalPrice = parseNumber(document.getElementById('contract-price').value);
-                const downPayment = parseNumber(document.getElementById('contract-downpayment').value);
-                const numInstallments = parseNumber(document.getElementById('contract-installments-num').value);
-                const startDate = document.getElementById('contract-start-date').value;
+            async function handleSaveContract() {
+                const contractData = {
+                    unit_id: parseNumber(document.getElementById('contract-unit').value),
+                    customer_id: parseNumber(document.getElementById('contract-customer').value),
+                    total_price: parseNumber(document.getElementById('contract-price').value),
+                    down_payment: parseNumber(document.getElementById('contract-downpayment').value),
+                    installments_num: parseNumber(document.getElementById('contract-installments-num').value),
+                    start_date: document.getElementById('contract-start-date').value,
+                    contract_date: today()
+                };
 
-                if (!unitId || !customerId || !totalPrice) {
+                if (!contractData.unit_id || !contractData.customer_id || !contractData.total_price) {
                     alert('الرجاء ملء جميع الحقول المطلوبة.');
                     return;
                 }
 
-                recordStateForUndo();
-
-                const contractId = uid('ct');
-                const newContract = {
-                    id: contractId,
-                    unitId,
-                    customerId,
-                    totalPrice,
-                    downPayment,
-                    contractDate: today()
-                };
-
-                const newInstallments = generateInstallments(totalPrice, downPayment, numInstallments, startDate).map(inst => ({
-                    ...inst,
-                    id: uid('in'),
-                    unitId,
-                    contractId,
-                    type: 'قسط'
-                }));
-
-                const newPayments = [];
-                if (downPayment > 0) {
-                    newPayments.push({
-                        id: uid('py'),
-                        contractId,
-                        unitId,
-                        amount: downPayment,
-                        date: today(),
-                        method: 'مقدم'
+                try {
+                    const response = await fetch('http://localhost:8000/api/contracts/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(contractData)
                     });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to save contract');
+                    }
+                    await loadState();
+                    hideModal();
+                    renderPage('contracts-page');
+                } catch (e) {
+                    alert(`فشل حفظ العقد: ${e.message}`);
                 }
-
-                app.state.contracts.push(newContract);
-                app.state.installments.push(...newInstallments);
-                app.state.payments.push(...newPayments);
-
-                saveState();
-                hideModal();
-                renderPage('contracts-page');
             }
 
             window.showContractForm = showContractForm;
@@ -1678,148 +1607,59 @@
                 document.getElementById('save-payment-btn').addEventListener('click', () => handleSavePayment(installment.id));
             }
 
-            function handleSavePayment(installmentId) {
-                const paidAmount = parseNumber(document.getElementById('payment-amount').value);
-                const paymentDate = document.getElementById('payment-date').value;
-                const installment = app.state.installments.find(i => i.id === installmentId);
+            async function handleSavePayment(installmentId) {
+                const paymentData = {
+                    amount: parseNumber(document.getElementById('payment-amount').value),
+                    date: document.getElementById('payment-date').value,
+                    method: 'قسط'
+                };
 
-                if (paidAmount <= 0 || paidAmount > installment.amount) {
+                if (paymentData.amount <= 0) {
                     alert('الرجاء إدخال مبلغ صحيح.');
                     return;
                 }
 
-                recordStateForUndo();
-
-                // Add the payment record
-                app.state.payments.push({
-                    id: uid('py'),
-                    contractId: installment.contractId,
-                    unitId: installment.unitId,
-                    installmentId: installment.id,
-                    amount: paidAmount,
-                    date: paymentDate,
-                    method: 'قسط'
-                });
-
-                // Update the installment
-                app.state.installments = app.state.installments.map(i => {
-                    if (i.id === installmentId) {
-                        const newAmount = i.amount - paidAmount;
-                        const isPaid = newAmount < 0.01;
-                        return {
-                            ...i,
-                            amount: isPaid ? 0 : newAmount,
-                            status: isPaid ? 'مدفوع' : i.status
-                        };
+                try {
+                    const response = await fetch(`http://localhost:8000/api/installments/${installmentId}/pay`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(paymentData)
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to save payment');
                     }
-                    return i;
-                });
-
-                saveState();
-                hideModal();
-                renderPage('installments-page');
+                    await loadState();
+                    hideModal();
+                    renderPage('installments-page');
+                } catch (e) {
+                    alert(`فشل حفظ الدفعة: ${e.message}`);
+                }
             }
 
             window.showPaymentModal = showPaymentModal;
 
-            function showRescheduleModal(installmentId) {
-                const installment = app.state.installments.find(i => i.id === installmentId);
-                if (!installment) { alert('لم يتم العثور على القسط.'); return; }
-
-                const title = 'إعادة جدولة قسط';
-                const bodyHtml = `
-                    <form id="reschedule-form">
-                        <p><strong>القسط الحالي:</strong> ${egp(installment.amount)} يستحق في ${installment.dueDate}</p>
-                        <div class="grid grid-cols-2 gap-1">
-                            <div class="form-group">
-                                <label for="reschedule-amount">المبلغ الجديد</label>
-                                <input type="number" id="reschedule-amount" class="input" value="${installment.amount}">
-                            </div>
-                            <div class="form-group">
-                                <label for="reschedule-date">تاريخ الاستحقاق الجديد</label>
-                                <input type="date" id="reschedule-date" class="input" value="${installment.dueDate}">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="distribute-diff">
-                                توزيع الفرق على الأقساط التالية لنفس العقد
-                            </label>
-                        </div>
-                    </form>
-                `;
-                const footerHtml = `<button id="save-reschedule-btn" class="btn ok">حفظ التغييرات</button>`;
-
-                showModal(title, bodyHtml, footerHtml);
-                document.getElementById('save-reschedule-btn').addEventListener('click', () => handleSaveReschedule(installment.id));
-            }
-
-            function handleSaveReschedule(installmentId) {
-                const newAmount = parseNumber(document.getElementById('reschedule-amount').value);
-                const newDate = document.getElementById('reschedule-date').value;
-                const distribute = document.getElementById('distribute-diff').checked;
-
-                const installment = app.state.installments.find(i => i.id === installmentId);
-                const originalAmount = installment.amount;
-
-                recordStateForUndo();
-
-                // First, update the target installment
-                let targetUpdated = false;
-                app.state.installments = app.state.installments.map(i => {
-                    if (i.id === installmentId) {
-                        targetUpdated = true;
-                        return { ...i, amount: newAmount, dueDate: newDate };
-                    }
-                    return i;
-                });
-
-                // Then, if distribution is needed, update subsequent installments
-                if (distribute && targetUpdated) {
-                    const difference = originalAmount - newAmount;
-                    const subsequentInstallments = app.state.installments
-                        .filter(i => i.contractId === installment.contractId && i.dueDate > installment.dueDate && i.status !== 'مدفوع')
-                        .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-
-                    if (subsequentInstallments.length > 0) {
-                        const distributionAmount = difference / subsequentInstallments.length;
-                        const subsequentIds = new Set(subsequentInstallments.map(i => i.id));
-
-                        app.state.installments = app.state.installments.map(i => {
-                            if (subsequentIds.has(i.id)) {
-                                return { ...i, amount: i.amount + distributionAmount };
-                            }
-                            return i;
-                        });
-                        alert(`تم توزيع مبلغ ${egp(difference)} على ${subsequentInstallments.length} أقساط.`);
+            async function handleDeleteInstallment(installmentId) {
+                if (window.confirm('هل أنت متأكد من حذف هذا القسط؟ لا يمكن التراجع عن هذا الإجراء.')) {
+                     try {
+                        const response = await fetch(`http://localhost:8000/api/installments/${installmentId}`, { method: 'DELETE' });
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to delete installment');
+                        }
+                        await loadState();
+                        renderPage('installments-page');
+                    } catch (e) {
+                        alert(`فشل حذف القسط: ${e.message}`);
                     }
                 }
-
-                saveState();
-                hideModal();
-                renderPage('installments-page');
             }
 
-            function handleDeleteInstallment(installmentId) {
-                const hasPayment = app.state.payments.some(p => p.installmentId === installmentId);
-                if (hasPayment) {
-                    alert('لا يمكن حذف هذا القسط لوجود دفعة مرتبطة به. يجب حذف الدفعة أولاً.');
-                    return;
-                }
-
-                if (window.confirm('هل أنت متأكد من حذف هذا القسط؟')) {
-                    recordStateForUndo();
-                    app.state.installments = app.state.installments.filter(i => i.id !== installmentId);
-                    saveState();
-                    renderPage('installments-page');
-                }
-            }
-
-            window.showRescheduleModal = showRescheduleModal;
             window.handleDeleteInstallment = handleDeleteInstallment;
 
             function renderPayments(container) {
-                const { payments, units, contracts, customers } = app.state;
+                // ... content is now generated by a filterAndRender function inside ...
+                 const { payments, units, contracts, customers } = app.state;
 
                 const unitMap = new Map(units.map(u => [u.id, u]));
                 const customerMap = new Map(customers.map(c => [c.id, c]));
@@ -1853,9 +1693,9 @@
                 function filterAndRender() {
                     const query = searchInput.value.toLowerCase();
                     const filteredPayments = payments.filter(p => {
-                        const unit = unitMap.get(p.unitId);
                         const contract = contractMap.get(p.contractId);
-                        const customer = contract ? customerMap.get(contract.customerId) : null;
+                        const unit = contract ? unitMap.get(contract.unit_id) : null;
+                        const customer = contract ? customerMap.get(contract.customer_id) : null;
                         const searchText = `
                             ${unit ? unit.code : ''}
                             ${customer ? customer.name : ''}
@@ -1864,9 +1704,9 @@
                     });
 
                     tableBody.innerHTML = filteredPayments.sort((a,b) => b.date.localeCompare(a.date)).map(p => {
-                        const unit = unitMap.get(p.unitId);
                         const contract = contractMap.get(p.contractId);
-                        const customer = contract ? customerMap.get(contract.customerId) : null;
+                        const unit = contract ? unitMap.get(contract.unit_id) : null;
+                        const customer = contract ? customerMap.get(contract.customer_id) : null;
                         return `
                             <tr>
                                 <td>${unit ? unit.code : 'N/A'}</td>
@@ -1886,38 +1726,26 @@
                 filterAndRender();
             }
 
-            function handleDeletePayment(paymentId) {
+            async function handleDeletePayment(paymentId) {
                 if (!window.confirm('هل أنت متأكد من حذف هذه الدفعة؟ سيؤثر هذا على حسابات الأقساط والعقود.')) {
                     return;
                 }
 
-                recordStateForUndo();
-
-                const payment = app.state.payments.find(p => p.id === paymentId);
-                if (!payment) return;
-
-                // If the payment was for an installment, revert the installment's amount
-                if (payment.installmentId) {
-                    app.state.installments = app.state.installments.map(i => {
-                        if (i.id === payment.installmentId) {
-                            return {
-                                ...i,
-                                amount: i.amount + payment.amount,
-                                status: 'غير مدفوع' // Revert status
-                            };
-                        }
-                        return i;
-                    });
-                }
-
-                // Remove the payment
-                app.state.payments = app.state.payments.filter(p => p.id !== paymentId);
-
-                saveState();
-                renderPage('payments-page');
-                // Also re-render installments page if it was the active one, to reflect changes.
-                if (document.querySelector('.page.active').id === 'installments-page') {
-                    renderPage('installments-page');
+                try {
+                    const response = await fetch(`http://localhost:8000/api/payments/${paymentId}`, { method: 'DELETE' });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to delete payment');
+                    }
+                    await loadState();
+                    // Re-render current page and potentially installments page
+                    const activePageId = document.querySelector('.page.active').id;
+                    renderPage(activePageId);
+                    if (activePageId === 'contracts-page') {
+                        renderPage('installments-page');
+                    }
+                } catch (e) {
+                    alert(`فشل حذف الدفعة: ${e.message}`);
                 }
             }
 
@@ -2153,28 +1981,12 @@
              * The main entry point for the application.
              */
             function init() {
-                loadState();
+                await loadState(); // Wait for data to load from backend
                 setupNavigation();
                 setupModal();
 
-                // Setup Undo/Redo event listeners
-                undoBtn.addEventListener('click', handleUndo);
-                redoBtn.addEventListener('click', handleRedo);
-
-                document.addEventListener('keydown', (e) => {
-                    if (e.ctrlKey && e.key === 'z') {
-                        e.preventDefault();
-                        handleUndo();
-                    }
-                    if (e.ctrlKey && e.key === 'y') {
-                        e.preventDefault();
-                        handleRedo();
-                    }
-                });
-
-                // Set initial state for buttons and page
-                updateUndoRedoButtons();
-                navigateTo('dashboard-page'); // Start on the dashboard
+                // Set initial page
+                navigateTo('dashboard-page');
             }
 
             // Let's go!
