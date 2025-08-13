@@ -270,11 +270,26 @@ window.delRow=(coll,id)=>{ state[coll]=state[coll].filter(x=>x.id!==id); persist
 
 /* ===== الوحدات ===== */
 function calcRemaining(u){
-  const ct=state.contracts.find(c=>c.unitId===u.id);
-  const broker=ct?Number(ct.brokerAmount||0):0, maint=ct?Number(ct.maintenanceDeposit||0):0;
-  const base=ct? (Number(ct.totalPrice||u.totalPrice||0) - Number(ct.downPayment||0) - broker - maint) : Number(u.totalPrice||0);
-  const paid=state.payments.filter(p=>p.unitId===u.id).reduce((s,p)=>s+Number(p.amount||0),0);
-  return Math.max(0, base - paid);
+  const ct = state.contracts.find(c => c.unitId === u.id);
+  // If no contract, remaining is the full price
+  if (!ct) return Number(u.totalPrice || 0);
+
+  // Total price from the contract is the source of truth
+  const totalPrice = Number(ct.totalPrice || u.totalPrice || 0);
+
+  // Sum of all payments explicitly linked to an installment
+  const installmentPayments = state.payments
+      .filter(p => p.unitId === u.id && p.installmentId)
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  // The down payment amount from the contract
+  const downPayment = Number(ct.downPayment || 0);
+
+  // Total paid towards the principal is the down payment plus all installment payments.
+  const totalPaid = downPayment + installmentPayments;
+
+  const remaining = totalPrice - totalPaid;
+  return Math.max(0, remaining);
 }
 function renderUnits(){
   let sort={idx:0,dir:'asc'};
@@ -329,13 +344,29 @@ function renderUnits(){
   </div>`;
 
   window.addUnit=()=>{
-    const code=document.getElementById('u-code').value.trim();
+    let code=document.getElementById('u-code').value.trim();
     const name=document.getElementById('u-name').value.trim();
     const total=parseNumber(document.getElementById('u-total').value);
     const status=document.getElementById('u-status').value;
     const floor=document.getElementById('u-floor').value.trim();
     const building=document.getElementById('u-building').value.trim();
-    if(!code||!total) return alert('أدخل الكود والسعر');
+
+    if (!code) {
+        if (!building || !floor || !name) {
+            return alert('لإنشاء كود تلقائي، الرجاء إدخال اسم الوحدة ورقم الدور والعمارة.');
+        }
+        const san_b = building.replace(/\s/g, '');
+        const san_f = floor.replace(/\s/g, '');
+        const san_n = name.replace(/\s/g, '');
+        code = `${san_b}-${san_f}-${san_n}`;
+    }
+
+    if(!total) return alert('أدخل السعر الكلي للوحدة');
+
+    if (state.units.some(u => u.code.toLowerCase() === code.toLowerCase())) {
+        return alert('هذا الكود مستخدم بالفعل. الرجاء إدخال كود فريد.');
+    }
+
     state.units.push({id:uid('U'),code,name,totalPrice:total,status,floor,building});
     persist(); draw();
   };
@@ -369,20 +400,32 @@ function renderUnits(){
 window.numEdit=(coll,id,key,el)=>{ el.textContent = parseNumber(el.textContent||''); inlineUpd(coll,id,key,Number(el.textContent||0)); };
 window.openUnit=(id)=>{
   const u=unitById(id); if(!u) return;
+  const ct = state.contracts.find(c => c.unitId === u.id);
+
   const remain = egp(calcRemaining(u));
   const instRows = state.installments.filter(i=>i.unitId===id).sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||'')).map(i=>`<tr><td>${i.type}</td><td>${egp(i.originalAmount ?? i.amount)}</td><td>${egp(i.amount)}</td><td>${egp(Math.max(0,(i.originalAmount ?? i.amount) - (i.amount||0)))}</td><td>${i.dueDate||''}</td><td>${i.paymentDate||''}</td><td>${i.status||''}</td></tr>`).join('');
   const payRows = state.payments.filter(p=>p.unitId===id).map(p=>`<tr><td>${egp(p.amount)}</td><td>${p.method||''}</td><td>${p.date||''}</td></tr>`).join('');
   const partLinks = state.unitPartners.filter(up=>up.unitId===id).map(up=>({up, partner: partnerById(up.partnerId)}));
   const partsTable = partLinks.map(x=>`<tr><td>${x.partner?.name||'—'}</td><td>${x.up.percent}%</td></tr>`).join('');
+
+  const contractDetailsHtml = ct ? `
+    <tr><th>المقدم</th><td>${egp(ct.downPayment)}</td></tr>
+    <tr><th>وديعة الصيانة</th><td>${egp(ct.maintenanceDeposit || 0)}</td></tr>
+    <tr><th>عمولة السمسار</th><td>${egp(ct.brokerAmount || 0)}</td></tr>
+  ` : '';
+
   const html=`
     <h1>ملخص وحدة — ${u.code}</h1>
+    <p>
+      <b>اسم الوحدة:</b> ${u.name||'—'} &nbsp; | &nbsp;
+      <b>العمارة:</b> ${u.building||'—'} &nbsp; | &nbsp;
+      <b>الدور:</b> ${u.floor||'—'}
+    </p>
     <table>
-      <tr><th>السعر</th><td>${egp(u.totalPrice)}</td></tr>
-      <tr><th>المتبقي</th><td>${remain}</td></tr>
+      <tr><th>السعر الكلي للوحدة</th><td>${egp(u.totalPrice)}</td></tr>
+      ${contractDetailsHtml}
+      <tr><th>إجمالي المتبقي</th><td style="font-weight:bold">${remain}</td></tr>
       <tr><th>الحالة</th><td>${u.status}</td></tr>
-      <tr><th>اسم الوحدة</th><td>${u.name||'—'}</td></tr>
-      <tr><th>الدور</th><td>${u.floor||'—'}</td></tr>
-      <tr><th>العمارة</th><td>${u.building||'—'}</td></tr>
     </table>
     <h2>الأقساط</h2>
     <table><thead><tr><th>النوع</th><th>المبلغ</th><th>المتبقي</th><th>المسدد</th><th>الاستحقاق</th><th>السداد</th><th>الحالة</th></tr></thead><tbody>${instRows}</tbody></table>
@@ -739,16 +782,28 @@ function renderPayments(){
     const q=(document.getElementById('p-q')?.value||'').trim();
     let list=state.payments.slice().reverse();
     if(q) list=list.filter(p=> unitCode(p.unitId).includes(q) || (p.method||'').includes(q) || (p.date||'').includes(q) );
-    const rows=list.map(p=>[ unitCode(p.unitId), egp(p.amount), p.method||'—', p.date||'—', (p.installmentId?'<span class="badge info">من قسط</span>':''), `<button class="btn" onclick='printHTML("إيصال دفع", "<h1>إيصال دفع</h1><p>الوحدة: ${unitCode(p.unitId)}</p><p>المبلغ: ${egp(p.amount)}</p><p>الطريقة: ${p.method||"—"}</p><p>التاريخ: ${p.date||"—"}</p>")'>إيصال</button>` ]);
+    const rows=list.map(p=>[
+      unitCode(p.unitId),
+      egp(p.amount),
+      p.method||'—',
+      p.date||'—',
+      (p.installmentId?'<span class="badge info">من قسط</span>':'<span class="badge secondary">يدوي</span>'),
+      `<button class="btn" onclick='printHTML("إيصال دفع", "<h1>إيصال دفع</h1><p>الوحدة: ${unitCode(p.unitId)}</p><p>المبلغ: ${egp(p.amount)}</p><p>الطريقة: ${p.method||"—"}</p><p>التاريخ: ${p.date||"—"}</p>")'>إيصال</button>` +
+      (p.installmentId ? '' : ` <button class="btn secondary" onclick="deletePayment('${p.id}')">حذف</button>`)
+    ]);
     document.getElementById('p-list').innerHTML=table(['الوحدة','المبلغ','الطريقة','التاريخ','مصدر',''], rows);
   }
+
   view.innerHTML=`
   <div class="grid grid-2">
     <div class="card">
       <h3>إضافة دفعة</h3>
-      <select class="select" id="p-unit"><option value="">الوحدة</option>${state.units.map(u=>`<option value="${u.id}">${u.code}</option>`).join('')}</select>
+      <select class="select" id="p-unit"><option value="">الوحدة</option>${state.units.map(u=>`<option value="${u.id}">${u.code} - ${u.name||''}</option>`).join('')}</select>
       <input class="input" id="p-amount" placeholder="المبلغ" oninput="this.value=this.value.replace(/[^\\d.]/g,'')">
-      <select class="select" id="p-method"><option>نقدي</option><option>تحويل</option><option>قسط</option><option>جزئي</option></select>
+      <select class="select" id="p-method"><option value="نقدي">نقدي</option><option value="تحويل">تحويل</option><option value="قسط">قسط</option><option value="جزئي">جزئي</option></select>
+      <div id="p-installments-container" style="display:none; margin-top: 8px;">
+        <select class="select" id="p-installments"><option value="">اختر القسط المرتبط</option></select>
+      </div>
       <input class="input" id="p-date" type="date" value="${today()}">
       <button class="btn" onclick="addPayment()">حفظ + إيصال</button>
     </div>
@@ -762,11 +817,65 @@ function renderPayments(){
       <div id="p-list"></div>
     </div>
   </div>`;
+
+  function updateInstallmentSelector() {
+      const unitId = document.getElementById('p-unit').value;
+      const method = document.getElementById('p-method').value;
+      const container = document.getElementById('p-installments-container');
+      const select = document.getElementById('p-installments');
+      const amountInput = document.getElementById('p-amount');
+
+      if (unitId && (method === 'قسط' || method === 'جزئي')) {
+          const unpaid = state.installments.filter(i => i.unitId === unitId && i.status !== 'مدفوع' && i.amount > 0);
+          select.innerHTML = '<option value="">اختر القسط...</option>' + unpaid.map(i =>
+              `<option value="${i.id}" data-amount="${i.amount}">قسط ${egp(i.amount)} - مستحق في ${i.dueDate}</option>`
+          ).join('');
+          select.onchange = () => {
+            const selectedOption = select.options[select.selectedIndex];
+            if (selectedOption && selectedOption.dataset.amount) {
+              amountInput.value = selectedOption.dataset.amount;
+            }
+          };
+          container.style.display = 'block';
+      } else {
+          container.style.display = 'none';
+      }
+  }
+
+  document.getElementById('p-unit').onchange = updateInstallmentSelector;
+  document.getElementById('p-method').onchange = updateInstallmentSelector;
+
   window.addPayment=()=>{
-    const unitId=document.getElementById('p-unit').value; const amount=parseNumber(document.getElementById('p-amount').value);
-    if(!unitId||!(amount>0)) return alert('اختر وحدة واكتب مبلغ');
-    const p={id:uid('P'),unitId,amount,method:document.getElementById('p-method').value,date:document.getElementById('p-date').value||today()};
-    state.payments.push(p); persist(); draw();
+    const unitId=document.getElementById('p-unit').value;
+    const amount=parseNumber(document.getElementById('p-amount').value);
+    const method=document.getElementById('p-method').value;
+    const date=document.getElementById('p-date').value||today();
+    const installmentId = document.getElementById('p-installments').value;
+
+    if(!unitId||!(amount>0)) return alert('اختر وحدة واكتب مبلغ صحيح');
+
+    const p = {id:uid('P'), unitId, amount, method, date};
+
+    if ((method === 'قسط' || method === 'جزئي') && installmentId) {
+        const i = state.installments.find(x => x.id === installmentId);
+        if (!i) return alert('لم يتم العثور على القسط المختار.');
+        if (amount > i.amount) {
+            return alert(`المبلغ المدفوع ${egp(amount)} أكبر من المتبقي على القسط ${egp(i.amount)}.`);
+        }
+
+        p.installmentId = installmentId;
+
+        if (typeof i.originalAmount !== 'number') i.originalAmount = i.amount;
+        i.amount = Math.round((i.amount - amount) * 100) / 100;
+        if (i.amount <= 0) {
+            i.status = 'مدفوع';
+            i.paymentDate = date;
+        }
+    }
+
+    state.payments.push(p);
+    persist();
+    draw();
     printHTML('إيصال دفع', `<h1>إيصال دفع</h1><p>الوحدة: ${unitCode(unitId)}</p><p>المبلغ: ${egp(amount)}</p><p>الطريقة: ${p.method}</p><p>التاريخ: ${p.date}</p>`);
   };
   window.expPayments=()=>{
@@ -777,6 +886,18 @@ function renderPayments(){
     <td>${egp(p.amount)}</td><td>${p.method||'—'}</td><td>${p.date||'—'}</td></tr>`).join('');
     printHTML('تقرير المدفوعات', `<h1>تقرير المدفوعات</h1><table><thead><tr><th>الوحدة</th><th>المبلغ</th><th>الطريقة</th><th>التاريخ</th></tr></thead><tbody>${rows}</tbody></table>`);
   };
+  window.deletePayment = function(id) {
+      const payment = state.payments.find(p => p.id === id);
+      if (!payment) return alert('لم يتم العثور على الدفعة.');
+      if (payment.installmentId) {
+          return alert('لا يمكن حذف دفعة مرتبطة بقسط. يرجى استخدام شاشة الأقساط.');
+      }
+      if (confirm(`هل أنت متأكد من حذف هذه الدفعة؟\nالمبلغ: ${egp(payment.amount)}\nالتاريخ: ${payment.date}`)) {
+          state.payments = state.payments.filter(p => p.id !== id);
+          persist();
+          nav('payments');
+      }
+  }
   draw();
 }
 
