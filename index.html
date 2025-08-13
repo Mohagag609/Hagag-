@@ -69,6 +69,8 @@ hr{border:none;border-top:1px solid var(--line);margin:12px 0}
   <div class="header">
     <div class="brand"><div class="logo">🏛️</div><h1>مدير الاستثمار العقاري — النسخة النهائية</h1></div>
     <div class="tools">
+      <button class="btn secondary" id="undo-btn" disabled title="تراجع (Ctrl+Z)">↪️</button>
+      <button class="btn secondary" id="redo-btn" disabled title="إعادة (Ctrl+Y)">↩️</button>
       <select class="select" id="themeSel"><option value="dark">داكن</option><option value="light">فاتح</option></select>
       <select class="select" id="fontSel"><option value="14">خط 14</option><option value="16" selected>خط 16</option><option value="18">خط 18</option></select>
       <button class="btn secondary" id="lockBtn">🔒 قفل</button>
@@ -87,15 +89,23 @@ let historyStack = [];
 let historyIndex = -1;
 let currentView = 'dash'; // To track the current page for refresh on undo/redo
 
+function updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+    if (!undoBtn || !redoBtn) return;
+    undoBtn.disabled = historyIndex <= 0;
+    redoBtn.disabled = historyIndex >= historyStack.length - 1;
+}
+
 function undo() {
     if (historyIndex > 0) {
         historyIndex--;
         const restoredState = JSON.parse(JSON.stringify(historyStack[historyIndex]));
-        // Clear current state and copy properties from restored state
         Object.keys(state).forEach(key => delete state[key]);
         Object.assign(state, restoredState);
         persist();
-        nav(currentView); // Re-render the current view
+        nav(currentView);
+        updateUndoRedoButtons();
     }
 }
 
@@ -106,23 +116,19 @@ function redo() {
         Object.keys(state).forEach(key => delete state[key]);
         Object.assign(state, restoredState);
         persist();
-        nav(currentView); // Re-render the current view
+        nav(currentView);
+        updateUndoRedoButtons();
     }
 }
 
 function saveState() {
-    // Clear the 'redo' history if we've undone and are now making a new change
     historyStack = historyStack.slice(0, historyIndex + 1);
-
-    // Push a deep copy of the current state
     historyStack.push(JSON.parse(JSON.stringify(state)));
-
-    // Limit history stack size to prevent using too much memory
     if (historyStack.length > 50) {
         historyStack.shift();
     }
-
     historyIndex = historyStack.length - 1;
+    updateUndoRedoButtons();
 }
 
 function load(){
@@ -161,6 +167,7 @@ function checkLock(){
 }
 checkLock();
 saveState(); // Save the initial state
+updateUndoRedoButtons();
 
 /* ===== تنقل ===== */
 const routes=[
@@ -357,18 +364,19 @@ function renderUnits(){
     let list=state.units.slice();
     if(q) {
       list=list.filter(u=> {
-        const searchable = `${u.code||''} ${u.name||''} ${u.floor||''} ${u.building||''} ${u.status||''}`.toLowerCase();
+        const searchable = `${u.code||''} ${u.name||''} ${u.type||'سكني'} ${u.floor||''} ${u.building||''} ${u.status||''}`.toLowerCase();
         return searchable.includes(q);
       });
     }
     list.sort((a,b)=>{
-      const cols=[a.code||'', a.name||'', String(a.totalPrice||0), a.floor||'', a.building||'', a.status||''];
-      const colsB=[b.code||'', b.name||'', String(b.totalPrice||0), b.floor||'', b.building||'', b.status||''];
+      const cols=[a.code||'', a.name||'', a.type||'سكني', String(a.totalPrice||0), a.floor||'', a.building||'', a.status||''];
+      const colsB=[b.code||'', b.name||'', b.type||'سكني', String(b.totalPrice||0), b.floor||'', b.building||'', b.status||''];
       return (cols[sort.idx]+'').localeCompare(colsB[sort.idx]+'')*(sort.dir==='asc'?1:-1);
     });
     const rows=list.map(u=>[
       `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','code',this.textContent)">${u.code||''}</span>`,
       `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','name',this.textContent)">${u.name||''}</span>`,
+      `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','type',this.textContent)">${u.type||'سكني'}</span>`,
       `<span contenteditable="true" onblur="numEdit('units','${u.id}','totalPrice',this)">${u.totalPrice||0}</span>`,
       `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','floor',this.textContent)">${u.floor||''}</span>`,
       `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','building',this.textContent)">${u.building||''}</span>`,
@@ -378,7 +386,7 @@ function renderUnits(){
       `<button class="btn secondary" onclick="delRow('units','${u.id}')">حذف</button>`
     ]);
     document.getElementById('u-list').innerHTML=
-      table(['الكود','اسم الوحدة','السعر','الدور','العمارة','المتبقي','الحالة','',''], rows, sort, ns=>{sort=ns;draw();});
+      table(['الكود','اسم الوحدة','النوع','السعر','الدور','العمارة','المتبقي','الحالة','',''], rows, sort, ns=>{sort=ns;draw();});
   }
 
   view.innerHTML=`
@@ -389,6 +397,7 @@ function renderUnits(){
         <input class="input" id="u-code" placeholder="كود/اسم مختصر">
         <input class="input" id="u-name" placeholder="اسم الوحدة">
         <input class="input" id="u-total" placeholder="السعر الكلي" oninput="this.value=this.value.replace(/[^\\d.]/g,'')">
+        <select class="select" id="u-type"><option value="سكني">سكني</option><option value="تجاري">تجاري</option></select>
         <select class="select" id="u-status"><option>متاحة</option><option>مباعة</option><option>مرتجعة</option></select>
         <input class="input" id="u-floor" placeholder="رقم الدور">
         <input class="input" id="u-building" placeholder="رقم العمارة">
@@ -411,6 +420,7 @@ function renderUnits(){
     let code=document.getElementById('u-code').value.trim();
     const name=document.getElementById('u-name').value.trim();
     const total=parseNumber(document.getElementById('u-total').value);
+    const type=document.getElementById('u-type').value;
     const status=document.getElementById('u-status').value;
     const floor=document.getElementById('u-floor').value.trim();
     const building=document.getElementById('u-building').value.trim();
@@ -431,7 +441,7 @@ function renderUnits(){
         return alert('هذا الكود مستخدم بالفعل. الرجاء إدخال كود فريد.');
     }
     saveState();
-    state.units.push({id:uid('U'),code,name,totalPrice:total,status,floor,building});
+    state.units.push({id:uid('U'),code,name,totalPrice:total,status,floor,building,type});
     persist(); draw();
   };
 
@@ -491,6 +501,7 @@ window.openUnit=(id)=>{
       ${contractDetailsHtml}
       <tr><th>إجمالي المتبقي</th><td style="font-weight:bold">${remain}</td></tr>
       <tr><th>الحالة</th><td>${u.status}</td></tr>
+      <tr><th>نوع الوحدة</th><td>${u.type || 'سكني'}</td></tr>
     </table>
     <h2>الأقساط</h2>
     <table><thead><tr><th>النوع</th><th>المبلغ</th><th>المتبقي</th><th>المسدد</th><th>الاستحقاق</th><th>السداد</th><th>الحالة</th></tr></thead><tbody>${instRows}</tbody></table>
@@ -560,6 +571,19 @@ function renderContracts(){
       <div style="color:var(--muted); font-size:12px; margin-top:4px; padding-right: 5px;">
         إجمالي عدد الأقساط: <span id="ct-total-installments" style="font-weight:bold;">0</span>
       </div>
+      <div class="card" style="margin-top:8px; background: var(--bg); padding: 10px;">
+        <h4 style="margin-top:0; margin-bottom: 8px;">ملخص حسابي</h4>
+        <table style="font-size:12px; width:100%;">
+            <tr><td style="color:var(--muted)">(+) السعر الكلي</td><td id="summ-total" style="text-align:left;">0 ج.م</td></tr>
+            <tr><td style="color:var(--muted)">(-) المقدم</td><td id="summ-down" style="text-align:left;">0 ج.م</td></tr>
+            <tr><td style="color:var(--muted)">(-) وديعة الصيانة</td><td id="summ-maint" style="text-align:left;">0 ج.م</td></tr>
+            <tr><td style="color:var(--muted)">(-) عمولة السمسار</td><td id="summ-broker" style="text-align:left;">0 ج.م</td></tr>
+            <tr style="border-top: 1px solid var(--line); font-weight:bold; font-size: 13px;">
+                <td>(=) المبلغ المتبقي للأقساط</td>
+                <td id="summ-remain" style="text-align:left;">0 ج.م</td>
+            </tr>
+        </table>
+    </div>
       <div class="card" style="margin-top:8px">
         <h3>الشركاء في هذا العقد</h3>
         <div class="tools" style="display:flex; flex-wrap:wrap; gap:8px;">
@@ -663,9 +687,30 @@ function renderContracts(){
   document.getElementById('ct-count').oninput = updateTotalInstallments;
   document.getElementById('ct-annual-bonus').oninput = updateTotalInstallments;
 
+  function updateFinancialSummary() {
+      const total = parseNumber(document.getElementById('ct-total').value);
+      const down = parseNumber(document.getElementById('ct-down').value);
+      const maint = parseNumber(document.getElementById('ct-maint').value);
+      const brokerP = parseNumber(document.getElementById('ct-brokerp').value);
+      const brokerAmt = (total * brokerP / 100);
+      const remaining = total - down - maint - brokerAmt;
+
+      document.getElementById('summ-total').textContent = egp(total);
+      document.getElementById('summ-down').textContent = egp(down);
+      document.getElementById('summ-maint').textContent = egp(maint);
+      document.getElementById('summ-broker').textContent = egp(brokerAmt);
+      document.getElementById('summ-remain').textContent = egp(remaining);
+  }
+
+  const inputsToWatch = ['ct-total', 'ct-down', 'ct-maint', 'ct-brokerp'];
+  inputsToWatch.forEach(id => {
+      document.getElementById(id).oninput = updateFinancialSummary;
+  });
+
   draw();
   drawPartnersBox();
   updateTotalInstallments();
+  updateFinancialSummary();
 }
 
 /* ===== الأقساط — إضافة عمود المسدد + منع التكرار في المدفوعات ===== */
@@ -1428,6 +1473,9 @@ function createBarChart(rows) { // e.g., [['Label', value], ...]
 }
 
 /* ===== Undo/Redo Keyboard Shortcuts ===== */
+document.getElementById('undo-btn').onclick = undo;
+document.getElementById('redo-btn').onclick = redo;
+
 document.addEventListener('keydown', (e) => {
     // Do not interfere with text input fields' native undo/redo
     const targetNode = e.target.nodeName.toLowerCase();
