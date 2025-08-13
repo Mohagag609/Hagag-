@@ -1320,9 +1320,20 @@
                         </div>
                         <hr>
                         <h4>تفاصيل الأقساط</h4>
-                        <div class="form-group">
-                            <label for="contract-installments-num">عدد الأقساط</label>
-                            <input type="number" id="contract-installments-num" class="input" value="12">
+                        <div class="grid grid-cols-2 gap-1">
+                            <div class="form-group">
+                                <label for="contract-installments-num">عدد الأقساط</label>
+                                <input type="number" id="contract-installments-num" class="input" value="12">
+                            </div>
+                            <div class="form-group">
+                                <label for="contract-installment-frequency">دورية الأقساط</label>
+                                <select id="contract-installment-frequency" class="input">
+                                    <option value="monthly" selected>شهري</option>
+                                    <option value="quarterly">ربع سنوي</option>
+                                    <option value="semi-annually">نصف سنوي</option>
+                                    <option value="annually">سنوي</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="contract-start-date">تاريخ أول قسط</label>
@@ -1361,8 +1372,9 @@
                     const downPayment = parseNumber(document.getElementById('contract-downpayment').value);
                     const numInstallments = parseNumber(document.getElementById('contract-installments-num').value);
                     const startDate = document.getElementById('contract-start-date').value;
+                    const frequency = document.getElementById('contract-installment-frequency').value;
 
-                    const installments = generateInstallments(totalPrice, downPayment, numInstallments, startDate);
+                    const installments = generateInstallments(totalPrice, downPayment, numInstallments, startDate, frequency);
 
                     previewContainer.innerHTML = `
                         <h5>معاينة (${installments.length} قسط):</h5>
@@ -1375,7 +1387,7 @@
                 }
             }
 
-            function generateInstallments(totalPrice, downPayment, numInstallments, startDate) {
+            function generateInstallments(totalPrice, downPayment, numInstallments, startDate, frequency = 'monthly') {
                 if (numInstallments <= 0) return [];
                 const remainingAmount = totalPrice - downPayment;
                 if (remainingAmount < 0) throw new Error('المقدم لا يمكن أن يكون أكبر من السعر الإجمالي.');
@@ -1384,6 +1396,19 @@
                 const installments = [];
                 let currentDate = new Date(startDate);
 
+                let monthIncrement = 1;
+                switch (frequency) {
+                    case 'quarterly':
+                        monthIncrement = 3;
+                        break;
+                    case 'semi-annually':
+                        monthIncrement = 6;
+                        break;
+                    case 'annually':
+                        monthIncrement = 12;
+                        break;
+                }
+
                 for (let i = 0; i < numInstallments; i++) {
                     installments.push({
                         id: uid('inst'),
@@ -1391,7 +1416,7 @@
                         due_date: currentDate.toISOString().split('T')[0],
                         status: 'غير مدفوع'
                     });
-                    currentDate.setMonth(currentDate.getMonth() + 1);
+                    currentDate.setMonth(currentDate.getMonth() + monthIncrement);
                 }
                 return installments;
             }
@@ -1415,7 +1440,8 @@
 
                 const numInstallments = parseNumber(document.getElementById('contract-installments-num').value);
                 const startDate = document.getElementById('contract-start-date').value;
-                const newInstallments = generateInstallments(contractData.total_price, contractData.down_payment, numInstallments, startDate);
+                const frequency = document.getElementById('contract-installment-frequency').value;
+                const newInstallments = generateInstallments(contractData.total_price, contractData.down_payment, numInstallments, startDate, frequency);
                 newInstallments.forEach(inst => inst.contract_id = contractData.id);
 
                 app.state.contracts.push(contractData);
@@ -1463,6 +1489,7 @@
                     <p><strong>المتبقي:</strong> ${egp(contract.total_price - totalPaid)}</p>
                     <p><strong>عمولة الوسيط:</strong> ${egp(contract.broker_commission)}</p>
                     <p><strong>رسوم سنوية:</strong> ${egp(contract.annual_fee)}</p>
+                    <p><strong>صافي العقد:</strong> ${egp(contract.total_price - contract.down_payment - contract.broker_commission)}</p>
                     <hr>
                     <h4>جدول الأقساط</h4>
                     <div class="table-container" style="max-height: 300px; overflow-y: auto;">
