@@ -863,8 +863,8 @@
                     return;
                 }
 
-                if (!unitCode) {
-                    unitCode = `B${building_number}-F${floor_number}-${unit_name.replace(/\s+/g, '')}`;
+                if (!unitCode && !isEdit) {
+                    unitCode = `${building_number}-${floor_number}-(${unit_name})`;
                 }
 
                 const codeExists = app.state.units.some(u => u.code === unitCode && u.id !== unitId);
@@ -1606,6 +1606,7 @@
                                 <td>${inst.status}</td>
                                 <td class="actions">
                                     <button class="btn ok btn-sm" onclick="showPaymentModal('${inst.id}')" ${inst.status === 'مدفوع' ? 'disabled' : ''}>دفع</button>
+                                    <button class="btn btn-sm" onclick="showInstallmentEditModal('${inst.id}')" ${inst.status === 'مدفوع' ? 'disabled' : ''}>تعديل</button>
                                     <button class="btn warn btn-sm" onclick="handleDeleteInstallment('${inst.id}')" ${inst.status === 'مدفوع' ? 'disabled' : ''}>حذف</button>
                                 </td>
                             </tr>
@@ -1625,6 +1626,7 @@
                 const bodyHtml = `
                     <form id="payment-form">
                         <p><strong>المبلغ المستحق:</strong> ${egp(installment.amount)}</p>
+                        <p style="font-size: 0.9rem; color: #6c757d;">يمكنك تعديل المبلغ أدناه لدفع جزء من القسط.</p>
                         <div class="form-group">
                             <label for="payment-amount">المبلغ المدفوع</label>
                             <input type="number" id="payment-amount" class="input" value="${installment.amount}" max="${installment.amount}" min="0.01">
@@ -1686,6 +1688,58 @@
             }
 
             window.handleDeleteInstallment = handleDeleteInstallment;
+
+            function showInstallmentEditModal(installmentId) {
+                const installment = app.state.installments.find(i => i.id === installmentId);
+                if (!installment) {
+                    alert('لم يتم العثور على القسط.');
+                    return;
+                }
+
+                const title = 'تعديل القسط';
+                const bodyHtml = `
+                    <form id="edit-installment-form">
+                        <div class="form-group">
+                            <label for="installment-amount-edit">المبلغ المستحق</label>
+                            <input type="number" id="installment-amount-edit" class="input" value="${installment.amount}" min="0.01">
+                        </div>
+                         <div class="form-group">
+                            <label for="installment-due-date-edit">تاريخ الاستحقاق</label>
+                            <input type="date" id="installment-due-date-edit" class="input" value="${installment.due_date}">
+                        </div>
+                    </form>
+                `;
+                const footerHtml = `<button id="save-installment-btn" class="btn ok">حفظ التعديلات</button>`;
+
+                showModal(title, bodyHtml, footerHtml);
+                document.getElementById('save-installment-btn').addEventListener('click', () => handleSaveInstallment(installmentId));
+            }
+            window.showInstallmentEditModal = showInstallmentEditModal;
+
+            function handleSaveInstallment(installmentId) {
+                const newAmount = parseNumber(document.getElementById('installment-amount-edit').value);
+                const newDueDate = document.getElementById('installment-due-date-edit').value;
+
+                if (newAmount <= 0) {
+                    alert('الرجاء إدخال مبلغ صحيح للقسط.');
+                    return;
+                }
+                if (!newDueDate) {
+                    alert('الرجاء إدخال تاريخ استحقاق صحيح.');
+                    return;
+                }
+
+                app.state.installments = app.state.installments.map(inst => {
+                    if (inst.id === installmentId) {
+                        return { ...inst, amount: newAmount, due_date: newDueDate };
+                    }
+                    return inst;
+                });
+
+                saveState();
+                hideModal();
+                renderPage('installments-page');
+            }
 
             function renderPayments(container) {
                  const { payments, units, contracts, customers } = app.state;
