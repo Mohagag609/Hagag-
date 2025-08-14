@@ -287,27 +287,27 @@ function generatePartnerLedger(partnerId) {
         }
     });
 
-    // 2. Expenses from contracts (brokerage, maintenance)
+    // 2. Income from down payments and expenses from contracts
     state.contracts.forEach(c => {
         const unitPartners = state.unitPartners.filter(up => up.unitId === c.unitId);
         if (unitPartners.length === 0) return;
 
         const partnerLink = unitPartners.find(up => up.partnerId === partnerId);
         if (partnerLink) {
+            if (c.downPayment > 0) {
+                const income = c.downPayment * (partnerLink.percent / 100);
+                transactions.push({
+                    date: c.start,
+                    description: `حصيلة مقدم العقد للوحدة ${unitCode(c.unitId)}`,
+                    income: income,
+                    expense: 0
+                });
+            }
             if (c.brokerAmount > 0) {
                 const expense = c.brokerAmount * (partnerLink.percent / 100);
                 transactions.push({
                     date: c.start,
                     description: `عمولة سمسار للوحدة ${unitCode(c.unitId)}`,
-                    income: 0,
-                    expense: expense
-                });
-            }
-            if (c.maintenanceDeposit > 0) {
-                const expense = c.maintenanceDeposit * (partnerLink.percent / 100);
-                transactions.push({
-                    date: c.start,
-                    description: `وديعة صيانة للوحدة ${unitCode(c.unitId)}`,
                     income: 0,
                     expense: expense
                 });
@@ -764,7 +764,6 @@ function renderContracts(){
         <select class="select" id="ct-cust"><option value="">العميل</option>${state.customers.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
         <input class="input" id="ct-total" placeholder="السعر الكلي" oninput="this.value=this.value.replace(/[^\\d.]/g,'')">
         <input class="input" id="ct-down" placeholder="المقدم" oninput="this.value=this.value.replace(/[^\\d.]/g,'')">
-        <input class="input" id="ct-maint" placeholder="وديعة الصيانة (خارج الأقساط)" oninput="this.value=this.value.replace(/[^\\d.]/g,'')">
         <input class="input" id="ct-brokerp" placeholder="نسبة السمسار %" oninput="this.value=this.value.replace(/[^\\d.]/g,'')">
         <select class="select" id="ct-type"><option>شهري</option><option>ربع سنوي</option><option>نصف سنوي</option><option>سنوي</option></select>
         <input class="input" id="ct-count" placeholder="عدد الدفعات" oninput="this.value=this.value.replace(/[^\\d]/g,'')">
@@ -799,19 +798,19 @@ function renderContracts(){
     }
 
     const total=parseNumber(document.getElementById('ct-total').value), down=parseNumber(document.getElementById('ct-down').value);
-    const maint=parseNumber(document.getElementById('ct-maint').value), brokerP=parseNumber(document.getElementById('ct-brokerp').value);
+    const brokerP=parseNumber(document.getElementById('ct-brokerp').value);
     const type=document.getElementById('ct-type').value, count=parseInt(document.getElementById('ct-count').value||'0',10);
     const extra=parseInt(document.getElementById('ct-annual-bonus').value||'0',10);
     const startStr=document.getElementById('ct-start').value||today(); const start=new Date(startStr);
     if(count<=0) return alert('عدد الدفعات غير صالح');
     const brokerAmt=Math.round((total*brokerP/100)*100)/100;
     const code='CTR-'+String(state.contracts.length+1).padStart(5,'0');
-    const ct={id:uid('CT'), code, unitId, customerId, totalPrice:total, downPayment:down, maintenanceDeposit:maint, brokerPercent:brokerP, brokerAmount:brokerAmt, type, count, extraAnnual:Math.min(Math.max(extra,0),3), start:startStr};
+    const ct={id:uid('CT'), code, unitId, customerId, totalPrice:total, downPayment:down, brokerPercent:brokerP, brokerAmount:brokerAmt, type, count, extraAnnual:Math.min(Math.max(extra,0),3), start:startStr};
     state.contracts.push(ct);
 
     // توليد الأقساط
     const months={'شهري':1,'ربع سنوي':3,'نصف سنوي':6,'سنوي':12}[type]||1;
-    const remain=Math.max(0,total-down-maint-brokerAmt);
+    const remain=Math.max(0,total-down-brokerAmt);
     const parts=count + ct.extraAnnual;
     const base=Math.floor((remain/parts)*100)/100; let acc=0;
     for(let i=0;i<count;i++){
@@ -831,8 +830,8 @@ function renderContracts(){
     printContract(ct);
   };
   window.printContracts=()=>{
-    const rows=state.contracts.map(c=>`<tr><td>${c.code||''}</td><td>${unitCode(c.unitId)}</td><td>${(custById(c.customerId)||{}).name||'—'}</td><td>${egp(c.totalPrice)}</td><td>${egp(c.downPayment)}</td><td>${egp(c.maintenanceDeposit||0)}</td><td>${egp(c.brokerAmount||0)} (${c.brokerPercent||0}%)</td><td>${c.type}</td><td>${c.count}</td><td>${c.start}</td></tr>`).join('');
-    printHTML('تقرير العقود', `<h1>تقرير العقود</h1><table><thead><tr><th>الكود</th><th>الوحدة</th><th>العميل</th><th>السعر</th><th>المقدم</th><th>صيانة</th><th>عمولة</th><th>نوع</th><th>عدد</th><th>بداية</th></tr></thead><tbody>${rows}</tbody></table>`);
+    const rows=state.contracts.map(c=>`<tr><td>${c.code||''}</td><td>${unitCode(c.unitId)}</td><td>${(custById(c.customerId)||{}).name||'—'}</td><td>${egp(c.totalPrice)}</td><td>${egp(c.downPayment)}</td><td>${egp(c.brokerAmount||0)} (${c.brokerPercent||0}%)</td><td>${c.type}</td><td>${c.count}</td><td>${c.start}</td></tr>`).join('');
+    printHTML('تقرير العقود', `<h1>تقرير العقود</h1><table><thead><tr><th>الكود</th><th>الوحدة</th><th>العميل</th><th>السعر</th><th>المقدم</th><th>عمولة</th><th>نوع</th><th>عدد</th><th>بداية</th></tr></thead><tbody>${rows}</tbody></table>`);
   };
   window.printContract=(ct)=>{
     const html=`<h1>عقد بيع — ${ct.code}</h1>
@@ -840,7 +839,6 @@ function renderContracts(){
       <table>
         <tr><th>السعر الكلي</th><td>${egp(ct.totalPrice)}</td></tr>
         <tr><th>المقدم</th><td>${egp(ct.downPayment)}</td></tr>
-        <tr><th>وديعة الصيانة</th><td>${egp(ct.maintenanceDeposit||0)}</td></tr>
         <tr><th>عمولة السمسار</th><td>${egp(ct.brokerAmount||0)} (${ct.brokerPercent||0}%)</td></tr>
         <tr><th>نظام الأقساط</th><td>${ct.type} × ${ct.count} + سنوية إضافية: ${ct.extraAnnual}</td></tr>
         <tr><th>بداية العقد</th><td>${ct.start}</td></tr>
@@ -1784,7 +1782,6 @@ window.openContractDetails = function(id) {
                         <tr><th>الوحدة</th><td>${unit?.code || '—'} (${unit?.name || '—'})</td></tr>
                         <tr><th>السعر الكلي</th><td style="font-weight:bold">${egp(ct.totalPrice)}</td></tr>
                         <tr><th>المقدم</th><td>${egp(ct.downPayment)}</td></tr>
-                        <tr><th>وديعة الصيانة</th><td style="background:rgba(245, 158, 11, .1);">${egp(ct.maintenanceDeposit || 0)}</td></tr>
                         <tr><th>عمولة السمسار</th><td>${egp(ct.brokerAmount || 0)} (${ct.brokerPercent || 0}%)</td></tr>
                         <tr><th>نظام الأقساط</th><td>${ct.type} × ${ct.count} + ${ct.extraAnnual} سنوية</td></tr>
                         <tr><th>تاريخ البدء</th><td>${ct.start}</td></tr>
