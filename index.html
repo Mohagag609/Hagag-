@@ -175,6 +175,7 @@ const routes=[
   {id:'installments',title:'الأقساط',render:renderInstallments, tab: true},
   {id:'payments',title:'المدفوعات',render:renderPayments, tab: true},
   {id:'partners',title:'الشركاء',render:renderPartners, tab: true},
+  {id:'treasury',title:'الخزينة',render:renderTreasury, tab: true},
   {id:'reports',title:'التقارير',render:renderReports, tab: true},
   {id:'partner-debts',title:'ديون الشركاء',render:renderPartnerDebts, tab: true},
   {id:'backup',title:'نسخة احتياطية',render:renderBackup, tab: true},
@@ -265,6 +266,80 @@ function unitById(id){ return state.units.find(u=>u.id===id); }
 function custById(id){ return state.customers.find(c=>c.id===id); }
 function partnerById(id){ return state.partners.find(p=>p.id===id); }
 function unitCode(id){ return (unitById(id)||{}).code||'—'; }
+
+function generatePartnerLedger(partnerId) {
+    const transactions = [];
+
+    // 1. Income from customer payments
+    state.payments.forEach(p => {
+        const unitPartners = state.unitPartners.filter(up => up.unitId === p.unitId);
+        if (unitPartners.length === 0) return;
+
+        const partnerLink = unitPartners.find(up => up.partnerId === partnerId);
+        if (partnerLink) {
+            const income = p.amount * (partnerLink.percent / 100);
+            transactions.push({
+                date: p.date,
+                description: `حصيلة دفعة للوحدة ${unitCode(p.unitId)}`,
+                income: income,
+                expense: 0
+            });
+        }
+    });
+
+    // 2. Expenses from contracts (brokerage, maintenance)
+    state.contracts.forEach(c => {
+        const unitPartners = state.unitPartners.filter(up => up.unitId === c.unitId);
+        if (unitPartners.length === 0) return;
+
+        const partnerLink = unitPartners.find(up => up.partnerId === partnerId);
+        if (partnerLink) {
+            if (c.brokerAmount > 0) {
+                const expense = c.brokerAmount * (partnerLink.percent / 100);
+                transactions.push({
+                    date: c.start,
+                    description: `عمولة سمسار للوحدة ${unitCode(c.unitId)}`,
+                    income: 0,
+                    expense: expense
+                });
+            }
+            if (c.maintenanceDeposit > 0) {
+                const expense = c.maintenanceDeposit * (partnerLink.percent / 100);
+                transactions.push({
+                    date: c.start,
+                    description: `وديعة صيانة للوحدة ${unitCode(c.unitId)}`,
+                    income: 0,
+                    expense: expense
+                });
+            }
+        }
+    });
+
+    // 3. Income/Expense from inter-partner debts
+    state.partnerDebts.forEach(d => {
+        if (d.status !== 'مدفوع') return;
+
+        if (d.owedPartnerId === partnerId) { // This partner received money
+            transactions.push({
+                date: d.paymentDate,
+                description: `تحصيل دين من ${partnerById(d.payingPartnerId)?.name || 'شريك'}`,
+                income: d.amount,
+                expense: 0
+            });
+        }
+        if (d.payingPartnerId === partnerId) { // This partner paid money
+            transactions.push({
+                date: d.paymentDate,
+                description: `سداد دين إلى ${partnerById(d.owedPartnerId)?.name || 'شريك'}`,
+                income: 0,
+                expense: d.amount
+            });
+        }
+    });
+
+    // 4. Sort transactions by date
+    return transactions.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+}
 
 /* ===== لوحة التحكم ===== */
 function renderDash(){
@@ -1200,6 +1275,55 @@ function renderPartners(){
 
 let lastReportData = null;
 
+/* ===== الخزينة ===== */
+function renderTreasury() {
+    view.innerHTML = `
+        <div class="card">
+            <h3>الخزينة</h3>
+            <p>اختر شريكًا لعرض سجله المالي المفصل.</p>
+            <div class="tools">
+                <select class="select" id="treasury-partner-select" style="max-width: 300px;">
+                    <option value="">اختر شريك...</option>
+                    ${state.partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                </select>
+            </div>
+            <div id="treasury-ledger">
+                <p style="color: var(--muted);">الرجاء اختيار شريك لعرض البيانات.</p>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('treasury-partner-select').onchange = (e) => {
+        const partnerId = e.target.value;
+        const ledgerDiv = document.getElementById('treasury-ledger');
+        if (!partnerId) {
+            ledgerDiv.innerHTML = `<p style="color: var(--muted);">الرجاء اختيار شريك لعرض البيانات.</p>`;
+            return;
+        }
+
+        const transactions = generatePartnerLedger(partnerId);
+        if (transactions.length === 0) {
+            ledgerDiv.innerHTML = `<p style="color: var(--muted);">لا توجد معاملات لهذا الشريك.</p>`;
+            return;
+        }
+
+        let balance = 0;
+        const rows = transactions.map(tx => {
+            balance += (tx.income || 0) - (tx.expense || 0);
+            return [
+                tx.date,
+                tx.description,
+                `<span style="color:var(--ok)">${tx.income ? egp(tx.income) : '—'}</span>`,
+                `<span style="color:var(--warn)">${tx.expense ? egp(tx.expense) : '—'}</span>`,
+                `<strong style="color:var(--brand)">${egp(balance)}</strong>`
+            ];
+        });
+
+        const headers = ['التاريخ', 'الوصف', 'الدخل', 'المصروفات', 'الرصيد'];
+        ledgerDiv.innerHTML = table(headers, rows);
+    };
+}
+
 /* ===== التقارير ===== */
 function renderReports(){
   let selectedReportType = null;
@@ -1336,6 +1460,7 @@ function renderPartnerDebts(){
     if(confirm(`هل تؤكد سداد هذا الدين بمبلغ ${egp(debt.amount)}؟`)){
         saveState();
         debt.status = 'مدفوع';
+        debt.paymentDate = today();
         persist();
         draw();
     }
