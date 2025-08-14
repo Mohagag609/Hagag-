@@ -128,12 +128,14 @@ function saveState() {
 
 function load(){
   try{
-    return JSON.parse(localStorage.getItem(APPKEY))||{
-      customers:[],units:[],partners:[],unitPartners:[],contracts:[],installments:[],payments:[],
-      settings:{theme:'dark',font:16},locked:false
+    const s = JSON.parse(localStorage.getItem(APPKEY))||{};
+    return {
+      customers:[],units:[],partners:[],unitPartners:[],contracts:[],installments:[],payments:[],partnerDebts:[],
+      settings:{theme:'dark',font:16},locked:false,
+      ...s
     };
   }catch{
-    return {customers:[],units:[],partners:[],unitPartners:[],contracts:[],installments:[],payments:[],
+    return {customers:[],units:[],partners:[],unitPartners:[],contracts:[],installments:[],payments:[],partnerDebts:[],
       settings:{theme:'dark',font:16},locked:false};
   }
 }
@@ -164,23 +166,59 @@ checkLock();
 saveState(); // Save the initial state
 
 /* ===== تنقل ===== */
+let currentParam = null;
 const routes=[
-  {id:'dash',title:'لوحة التحكم',render:renderDash},
-  {id:'customers',title:'العملاء',render:renderCustomers},
-  {id:'units',title:'الوحدات',render:renderUnits},
-  {id:'contracts',title:'العقود',render:renderContracts},
-  {id:'installments',title:'الأقساط',render:renderInstallments},
-  {id:'payments',title:'المدفوعات',render:renderPayments},
-  {id:'partners',title:'الشركاء',render:renderPartners},
-  {id:'reports',title:'التقارير',render:renderReports},
-  {id:'backup',title:'نسخة احتياطية',render:renderBackup},
+  {id:'dash',title:'لوحة التحكم',render:renderDash, tab: true},
+  {id:'customers',title:'العملاء',render:renderCustomers, tab: true},
+  {id:'units',title:'الوحدات',render:renderUnits, tab: true},
+  {id:'contracts',title:'العقود',render:renderContracts, tab: true},
+  {id:'installments',title:'الأقساط',render:renderInstallments, tab: true},
+  {id:'payments',title:'المدفوعات',render:renderPayments, tab: true},
+  {id:'partners',title:'الشركاء',render:renderPartners, tab: true},
+  {id:'reports',title:'التقارير',render:renderReports, tab: true},
+  {id:'partner-debts',title:'ديون الشركاء',render:renderPartnerDebts, tab: true},
+  {id:'backup',title:'نسخة احتياطية',render:renderBackup, tab: true},
+  {id:'unit-details', title:'تفاصيل الوحدة', render:renderUnitDetails, tab: false},
 ];
 const tabs=document.getElementById('tabs'), view=document.getElementById('view');
-routes.forEach(r=>{ const b=document.createElement('button'); b.className='tab'; b.id='tab-'+r.id; b.textContent=r.title; b.onclick=()=>nav(r.id); tabs.appendChild(b); });
-function nav(id){ currentView = id; document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); document.getElementById('tab-'+id).classList.add('active'); routes.find(x=>x.id===id).render(); }
+routes.forEach(r=>{ if(r.tab){const b=document.createElement('button'); b.className='tab'; b.id='tab-'+r.id; b.textContent=r.title; b.onclick=()=>nav(r.id); tabs.appendChild(b);} });
+function nav(id, param = null){
+  currentView = id;
+  currentParam = param;
+  const route = routes.find(x=>x.id===id);
+  if(!route) return;
+
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  const tab = document.getElementById('tab-'+id);
+  if(tab) tab.classList.add('active');
+
+  route.render(param);
+}
 nav('dash');
 
 /* ===== أدوات عامة ===== */
+function showModal(title, content, onSave) {
+    const modal = document.createElement('div');
+    modal.id = 'dynamic-modal';
+    modal.style = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000;';
+    modal.innerHTML = `
+        <div style="background:var(--panel);padding:20px;border-radius:12px;width:90%;max-width:500px;">
+            <h3>${title}</h3>
+            <div>${content}</div>
+            <div class="tools" style="margin-top:20px;justify-content:flex-end;">
+                <button class="btn secondary" id="modal-cancel">إلغاء</button>
+                <button class="btn" id="modal-save">حفظ</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('modal-cancel').onclick = () => document.body.removeChild(modal);
+    document.getElementById('modal-save').onclick = () => {
+        if (onSave()) {
+            document.body.removeChild(modal);
+        }
+    };
+}
 function table(headers, rows, sortKey=null, onSort=null){
   const head = headers.map((h,i)=>`<th data-idx="${i}">${h}${sortKey&&sortKey.idx===i?(sortKey.dir==='asc'?' ▲':' ▼'):''}</th>`).join('');
   const body = rows.length? rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${headers.length}"><small>لا توجد بيانات</small></td></tr>`;
@@ -367,19 +405,25 @@ function renderUnits(){
       const colsB=[b.code||'', b.name||'', String(b.totalPrice||0), b.floor||'', b.building||'', b.status||''];
       return (cols[sort.idx]+'').localeCompare(colsB[sort.idx]+'')*(sort.dir==='asc'?1:-1);
     });
-    const rows=list.map(u=>[
-      `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','code',this.textContent)">${u.code||''}</span>`,
-      `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','name',this.textContent)">${u.name||''}</span>`,
-      `<span contenteditable="true" onblur="numEdit('units','${u.id}','totalPrice',this)">${u.totalPrice||0}</span>`,
-      `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','floor',this.textContent)">${u.floor||''}</span>`,
-      `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','building',this.textContent)">${u.building||''}</span>`,
-      `<span>${egp(calcRemaining(u))}</span>`,
-      `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','status',this.textContent)">${u.status||'متاحة'}</span>`,
-      `<button class="btn" onclick="openUnit('${u.id}')">تفاصيل</button>`,
-      `<button class="btn secondary" onclick="delRow('units','${u.id}')">حذف</button>`
-    ]);
+    const rows=list.map(u=> {
+      let actions = `<button class="btn" onclick="nav('unit-details', '${u.id}')">إدارة</button>`;
+      if (u.status === 'مباعة') {
+        actions += ` <button class="btn gold" style="margin-right: 5px;" onclick="startReturnProcess('${u.id}')">إرجاع وشراء</button>`;
+      }
+      return [
+        `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','code',this.textContent)">${u.code||''}</span>`,
+        `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','name',this.textContent)">${u.name||''}</span>`,
+        `<span contenteditable="true" onblur="numEdit('units','${u.id}','totalPrice',this)">${u.totalPrice||0}</span>`,
+        `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','floor',this.textContent)">${u.floor||''}</span>`,
+        `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','building',this.textContent)">${u.building||''}</span>`,
+        `<span>${egp(calcRemaining(u))}</span>`,
+        `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','status',this.textContent)">${u.status||'متاحة'}</span>`,
+        `<div class="tools" style="gap:5px; flex-wrap:nowrap;">${actions}</div>`,
+        `<button class="btn secondary" onclick="delRow('units','${u.id}')">حذف</button>`
+      ];
+    });
     document.getElementById('u-list').innerHTML=
-      table(['الكود','اسم الوحدة','السعر','الدور','العمارة','المتبقي','الحالة','',''], rows, sort, ns=>{sort=ns;draw();});
+      table(['الكود','اسم الوحدة','السعر','الدور','العمارة','المتبقي','الحالة','إجراءات',''], rows, sort, ns=>{sort=ns;draw();});
   }
 
   view.innerHTML=`
@@ -463,81 +507,174 @@ function renderUnits(){
   };
   draw();
 }
-window.numEdit=(coll,id,key,el)=>{ el.textContent = parseNumber(el.textContent||''); inlineUpd(coll,id,key,Number(el.textContent||0)); };
-window.openUnit=(id)=>{
-  const u=unitById(id); if(!u) return;
-  const ct = state.contracts.find(c => c.unitId === u.id);
 
-  const remain = egp(calcRemaining(u));
-  const instRows = state.installments.filter(i=>i.unitId===id).sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||'')).map(i=>`<tr><td>${i.type}</td><td>${egp(i.originalAmount ?? i.amount)}</td><td>${egp(i.amount)}</td><td>${egp(Math.max(0,(i.originalAmount ?? i.amount) - (i.amount||0)))}</td><td>${i.dueDate||''}</td><td>${i.paymentDate||''}</td><td>${i.status||''}</td></tr>`).join('');
-  const payRows = state.payments.filter(p=>p.unitId===id).map(p=>`<tr><td>${egp(p.amount)}</td><td>${p.method||''}</td><td>${p.date||''}</td></tr>`).join('');
-  const partLinks = state.unitPartners.filter(up=>up.unitId===id).map(up=>({up, partner: partnerById(up.partnerId)}));
-  const partsTable = partLinks.map(x=>`<tr><td>${x.partner?.name||'—'}</td><td>${x.up.percent}%</td></tr>`).join('');
+window.executeReturn = (unitId, buyingPartnerId) => {
+    saveState();
+    const u = unitById(unitId);
+    const ct = state.contracts.find(c => c.unitId === unitId);
+    if (!u || !ct) {
+        return alert('خطأ: لم يتم العثور على الوحدة أو العقد.');
+    }
 
-  const contractDetailsHtml = ct ? `
-    <tr><th>المقدم</th><td>${egp(ct.downPayment)}</td></tr>
-    <tr><th>وديعة الصيانة</th><td style="background:rgba(245, 158, 11, .1);">${egp(ct.maintenanceDeposit || 0)}</td></tr>
-    <tr><th>عمولة السمسار</th><td>${egp(ct.brokerAmount || 0)}</td></tr>
-  ` : '';
+    const originalPartners = state.unitPartners.filter(up => up.unitId === unitId);
+    const originalInstallments = state.installments.filter(i => i.unitId === unitId);
 
-  const html=`
-    <h1>ملخص وحدة — ${u.code}</h1>
-    <p>
-      <b>اسم الوحدة:</b> ${u.name||'—'} &nbsp; | &nbsp;
-      <b>العمارة:</b> ${u.building||'—'} &nbsp; | &nbsp;
-      <b>الدور:</b> ${u.floor||'—'}
-    </p>
-    <table>
-      <tr><th>السعر الكلي للوحدة</th><td>${egp(u.totalPrice)}</td></tr>
-      ${contractDetailsHtml}
-      <tr><th>إجمالي المتبقي</th><td style="font-weight:bold">${remain}</td></tr>
-      <tr><th>الحالة</th><td>${u.status}</td></tr>
-    </table>
-    <h2>الأقساط</h2>
-    <table><thead><tr><th>النوع</th><th>المبلغ</th><th>المتبقي</th><th>المسدد</th><th>الاستحقاق</th><th>السداد</th><th>الحالة</th></tr></thead><tbody>${instRows}</tbody></table>
-    <h2>المدفوعات</h2>
-    <table><thead><tr><th>المبلغ</th><th>الطريقة</th><th>التاريخ</th></tr></thead><tbody>${payRows}</tbody></table>
-    <h2>الشركاء</h2>
-    <table><thead><tr><th>الشريك</th><th>النسبة</th></tr></thead><tbody>${partsTable}</tbody></table>`;
-  printHTML('ملخص وحدة', html);
+    // Change unit status
+    u.status = 'متاحة';
+
+    // Delete contract and unpaid installments
+    state.contracts = state.contracts.filter(c => c.id !== ct.id);
+    state.installments = state.installments.filter(i => i.unitId !== unitId || i.status === 'مدفوع');
+
+    const sellingPartners = originalPartners.filter(p => p.partnerId !== buyingPartnerId);
+    const scheduleBasis = originalInstallments.sort((a,b) => (a.dueDate||'').localeCompare(b.dueDate||''));
+    const numInstallments = scheduleBasis.length;
+
+    if (numInstallments > 0) {
+        for (const seller of sellingPartners) {
+            const debtOwed = (ct.totalPrice * seller.percent / 100);
+            const installmentAmount = Math.round((debtOwed / numInstallments) * 100) / 100;
+            let accumulatedAmount = 0;
+
+            for (let i = 0; i < scheduleBasis.length; i++) {
+                const inst = scheduleBasis[i];
+                let amount = installmentAmount;
+                if (i === numInstallments - 1) {
+                    amount = Math.round((debtOwed - accumulatedAmount) * 100) / 100;
+                }
+
+                const newDebt = {
+                    id: uid('PD'),
+                    unitId: unitId,
+                    payingPartnerId: buyingPartnerId,
+                    owedPartnerId: seller.partnerId,
+                    amount: amount,
+                    dueDate: inst.dueDate,
+                    status: 'غير مدفوع'
+                };
+                state.partnerDebts.push(newDebt);
+                accumulatedAmount += amount;
+            }
+        }
+    }
+
+    // Update ownership
+    state.unitPartners = state.unitPartners.filter(up => up.unitId !== unitId);
+    state.unitPartners.push({ id: uid('UP'), unitId, partnerId: buyingPartnerId, percent: 100 });
+
+    persist();
+    alert('تمت عملية الإرجاع وشراء الشريك بنجاح.');
+    nav('units');
+    return true; // for modal
 };
 
-/* ===== العقود + توليد أقساط + اختيار الشركاء داخلي ===== */
-function renderContracts(){
-  // مصفوفة مؤقتة للشركاء المختارين قبل حفظ العقد
-  const temp = { partners: [] }; // {partnerId, name, percent}
-  function drawPartnersBox(){
-    const rows = temp.partners.map((p,idx)=>[
-      p.name,
-      p.percent + ' %',
-      `<button class="btn secondary" onclick="__delPr(${idx})">حذف</button>`
-    ]);
-    document.getElementById('ct-partners-box').innerHTML = table(['الشريك','النسبة',''], rows);
-    const sum = temp.partners.reduce((s,p)=>s+Number(p.percent||0),0);
-    document.getElementById('ct-partners-sum').textContent = sum + ' %';
-    document.getElementById('ct-partners-sum').className = 'badge ' + (sum > 100 ? 'warn' : (sum === 100 ? 'ok' : 'info'));
+window.startReturnProcess = (unitId) => {
+    const u = unitById(unitId);
+    const originalPartners = state.unitPartners.filter(up => up.unitId === unitId);
+
+    if (!u || u.status !== 'مباعة') {
+        return alert('يمكن تنفيذ هذه العملية على الوحدات المباعة فقط.');
+    }
+    if (originalPartners.length === 0) {
+        return alert('لا يوجد شركاء مرتبطون بهذه الوحدة. لا يمكن إتمام العملية.');
+    }
+
+    const partnerOptions = originalPartners.map(up => {
+        const p = partnerById(up.partnerId);
+        return `<option value="${p.id}">${p.name} (${up.percent}%)</option>`;
+    }).join('');
+
+    const content = `
+        <p>الرجاء تحديد الشريك الذي سيقوم بشراء الوحدة. سيتم تحويل ملكية الوحدة بالكامل إليه وإنشاء مديونية عليه لصالح الشركاء الآخرين.</p>
+        <select class="select" id="buying-partner-select">${partnerOptions}</select>
+    `;
+
+    showModal('إرجاع وشراء شريك', content, () => {
+        const buyingPartnerId = document.getElementById('buying-partner-select').value;
+        if (!buyingPartnerId) {
+            alert('الرجاء اختيار شريك.');
+            return false;
+        }
+        return executeReturn(unitId, buyingPartnerId);
+    });
+};
+
+window.numEdit=(coll,id,key,el)=>{ el.textContent = parseNumber(el.textContent||''); inlineUpd(coll,id,key,Number(el.textContent||0)); };
+
+/* ===== تفاصيل الوحدة وإدارة الشركاء ===== */
+function renderUnitDetails(unitId){
+  const u = unitById(unitId);
+  if(!u) return nav('units');
+
+  function drawPartners(){
+    const links = state.unitPartners.filter(up => up.unitId === u.id);
+    const rows = links.map(link => {
+      const partner = partnerById(link.partnerId);
+      return [
+        partner ? partner.name : 'شريك محذوف',
+        link.percent + ' %',
+        `<button class="btn secondary" onclick="removePartnerFromUnit('${link.id}')">حذف</button>`
+      ];
+    });
+    document.getElementById('ud-partners-list').innerHTML = table(['الشريك', 'النسبة', ''], rows);
+    const sum = links.reduce((s, p) => s + Number(p.percent || 0), 0);
+    const sumEl = document.getElementById('ud-partners-sum');
+    sumEl.textContent = sum + ' %';
+    sumEl.className = 'badge ' + (sum > 100 ? 'warn' : (sum === 100 ? 'ok' : 'info'));
   }
-  window.__addPrFromUI=()=>{
-      const partnerId = document.getElementById('pr-select').value;
-      if(!partnerId) return alert('الرجاء اختيار شريك');
 
-      if(temp.partners.find(p => p.partnerId === partnerId)){
-          return alert('هذا الشريك تم إضافته بالفعل.');
-      }
+  view.innerHTML = `
+    <div class="card">
+        <div class="header" style="justify-content: space-between;">
+            <h1>إدارة الوحدة — ${u.code}</h1>
+            <button class="btn secondary" onclick="nav('units')">⬅️ العودة للوحدات</button>
+        </div>
+        <p><b>اسم الوحدة:</b> ${u.name||'—'} | <b>العمارة:</b> ${u.building||'—'} | <b>الدور:</b> ${u.floor||'—'}</p>
 
-      const perc = Number(document.getElementById('pr-percent').value);
-      if(!(perc > 0 && perc <= 100)) return alert('الرجاء إدخال نسبة صحيحة (بين 1 و 100)');
+        <div class="card" style="margin-top:16px;">
+            <h3>الشركاء في هذه الوحدة</h3>
+            <div id="ud-partners-list"></div>
+            <hr>
+            <h4>إضافة شريك جديد</h4>
+            <div class="tools" style="display:flex; flex-wrap:wrap; gap:8px;">
+                <select class="select" id="ud-pr-select" style="flex:1;"><option value="">اختر شريك...</option>${state.partners.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
+                <input class="input" id="ud-pr-percent" type="number" min="0.1" max="100" step="0.1" placeholder="النسبة %" style="flex:0.5;">
+                <button class="btn" onclick="addPartnerToUnit('${u.id}')">إضافة</button>
+                <span class="badge" id="ud-partners-sum">0 %</span>
+            </div>
+            <small style="color:var(--muted)">أضف شركاء للوحدة من هنا. مجموع النسب يجب أن يكون 100%.</small>
+        </div>
+    </div>
+  `;
 
-      const pr = partnerById(partnerId);
-      if(!pr) return alert('لم يتم العثور على الشريك');
+  window.addPartnerToUnit = (unitId) => {
+    const partnerId = document.getElementById('ud-pr-select').value;
+    const percent = parseNumber(document.getElementById('ud-pr-percent').value);
+    if(!partnerId || !(percent > 0)) return alert('الرجاء اختيار شريك وإدخال نسبة صحيحة.');
 
-      temp.partners.push({partnerId:pr.id,name:pr.name,percent:perc});
-      document.getElementById('pr-select').value = '';
-      document.getElementById('pr-percent').value = '';
-      drawPartnersBox();
+    if(state.unitPartners.find(up => up.unitId === unitId && up.partnerId === partnerId)){
+        return alert('هذا الشريك تم إضافته بالفعل لهذه الوحدة.');
+    }
+
+    saveState();
+    state.unitPartners.push({id: uid('UP'), unitId, partnerId, percent});
+    persist();
+    drawPartners(); // Re-render only the partners list
   };
-  window.__delPr=(idx)=>{ temp.partners.splice(idx,1); drawPartnersBox(); };
 
+  window.removePartnerFromUnit = (linkId) => {
+    if(!confirm('هل أنت متأكد من حذف هذا الشريك من الوحدة؟')) return;
+    saveState();
+    state.unitPartners = state.unitPartners.filter(up => up.id !== linkId);
+    persist();
+    drawPartners();
+  };
+
+  drawPartners();
+}
+
+/* ===== العقود + توليد أقساط ===== */
+function renderContracts(){
   function draw(){
     const rows=state.contracts.map(c=>[ c.code, unitCode(c.unitId), (custById(c.customerId)||{}).name||'—', egp(c.totalPrice), c.start, `<button class="btn" onclick="openContractDetails('${c.id}')">عرض التفاصيل</button>` ]);
     document.getElementById('ct-list').innerHTML=table(['كود العقد','الوحدة','العميل','السعر','تاريخ البدء',''], rows);
@@ -546,6 +683,7 @@ function renderContracts(){
   <div class="grid">
     <div class="card">
       <h3>إضافة عقد</h3>
+      <p style="font-size:13px; color:var(--muted);">لإدارة الشركاء، اذهب إلى شاشة الوحدات ثم اضغط "إدارة" بجانب الوحدة المطلوبة.</p>
       <div class="grid grid-4">
         <select class="select" id="ct-unit"><option value="">الوحدة</option>${state.units.filter(u=>u.status!=='مباعة').map(u=>`<option value="${u.id}">${u.code}</option>`).join('')}</select>
         <select class="select" id="ct-cust"><option value="">العميل</option>${state.customers.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
@@ -560,17 +698,6 @@ function renderContracts(){
       </div>
       <div style="color:var(--muted); font-size:12px; margin-top:4px; padding-right: 5px;">
         إجمالي عدد الأقساط: <span id="ct-total-installments" style="font-weight:bold;">0</span>
-      </div>
-      <div class="card" style="margin-top:8px">
-        <h3>الشركاء في هذا العقد</h3>
-        <div class="tools" style="display:flex; flex-wrap:wrap; gap:8px;">
-          <select class="select" id="pr-select" style="flex:1;"><option value="">اختر شريك...</option>${state.partners.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
-          <input class="input" id="pr-percent" type="number" min="0.1" max="100" step="0.1" placeholder="النسبة %" style="flex:0.5;">
-          <button class="btn" onclick="__addPrFromUI()">إضافة</button>
-          <span class="badge" id="ct-partners-sum">0 %</span>
-        </div>
-        <div id="ct-partners-box"></div>
-        <small style="color:var(--muted)">أضف شركاء للوحدة من هنا. سيتم حفظهم عند إنشاء العقد. مجموع النسب يجب أن يكون 100%.</small>
       </div>
       <div class="tools">
         <button class="btn" onclick="createContract()">حفظ + توليد أقساط</button>
@@ -587,6 +714,15 @@ function renderContracts(){
     saveState();
     const unitId=document.getElementById('ct-unit').value, customerId=document.getElementById('ct-cust').value;
     if(!unitId||!customerId) return alert('اختر الوحدة والعميل');
+
+    const unitPartners = state.unitPartners.filter(up => up.unitId === unitId);
+    const totalPercent = unitPartners.reduce((sum, p) => sum + p.percent, 0);
+    if (unitPartners.length > 0 && totalPercent !== 100) {
+        if (!confirm(`تحذير: مجموع نسب الشركاء لهذه الوحدة هو ${totalPercent}%. هل تريد المتابعة على أي حال؟`)) {
+            return;
+        }
+    }
+
     const total=parseNumber(document.getElementById('ct-total').value), down=parseNumber(document.getElementById('ct-down').value);
     const maint=parseNumber(document.getElementById('ct-maint').value), brokerP=parseNumber(document.getElementById('ct-brokerp').value);
     const type=document.getElementById('ct-type').value, count=parseInt(document.getElementById('ct-count').value||'0',10);
@@ -614,23 +750,10 @@ function renderContracts(){
       state.installments.push({id:uid('I'),unitId,type:'سَنوي إضافي',amount:amt,originalAmount:amt,dueDate:d.toISOString().slice(0,10),paymentDate:null,status:'غير مدفوع'});
     }
 
-    // ربط الشركاء بالوحدة من داخل العقد
-    // First, remove any existing partners for this unit to avoid duplicates if re-assigning
-    state.unitPartners = state.unitPartners.filter(up => up.unitId !== unitId);
-    temp.partners.forEach(p=>{
-      state.unitPartners.push({id:uid('UP'),unitId,partnerId:p.partnerId,percent:Number(p.percent)||0});
-    });
-    const sum=temp.partners.reduce((s,p)=>s+Number(p.percent||0),0);
-    if(sum>0 && sum!==100) alert('تنبيه: مجموع نسب الشركاء لا يساوي 100%');
-
     const u=unitById(unitId); if(u) u.status='مباعة';
     persist();
     draw();
     printContract(ct);
-
-    // Clear temp partners for the next contract
-    temp.partners.length = 0;
-    drawPartnersBox();
   };
   window.printContracts=()=>{
     const rows=state.contracts.map(c=>`<tr><td>${c.code||''}</td><td>${unitCode(c.unitId)}</td><td>${(custById(c.customerId)||{}).name||'—'}</td><td>${egp(c.totalPrice)}</td><td>${egp(c.downPayment)}</td><td>${egp(c.maintenanceDeposit||0)}</td><td>${egp(c.brokerAmount||0)} (${c.brokerPercent||0}%)</td><td>${c.type}</td><td>${c.count}</td><td>${c.start}</td></tr>`).join('');
@@ -1148,6 +1271,79 @@ function renderReports(){
     runReport(selectedReportType);
   };
 }
+
+/* ===== ديون الشركاء ===== */
+function renderPartnerDebts(){
+  let sort = { idx: 3, dir: 'asc' }; // Default sort by due date
+  function draw(){
+    const q = (document.getElementById('pd-q')?.value || '').trim().toLowerCase();
+    let list = state.partnerDebts.slice();
+    if(q) {
+      list = list.filter(d => {
+        const paying = partnerById(d.payingPartnerId)?.name || '';
+        const owed = partnerById(d.owedPartnerId)?.name || '';
+        const unit = unitCode(d.unitId) || '';
+        const searchable = `${paying} ${owed} ${unit} ${d.status}`.toLowerCase();
+        return searchable.includes(q);
+      });
+    }
+
+    list.sort((a,b)=>{
+      const pA = partnerById(a.payingPartnerId)?.name || '';
+      const oA = partnerById(a.owedPartnerId)?.name || '';
+      const uA = unitCode(a.unitId);
+      const colsA = [pA, oA, uA, a.dueDate, a.amount, a.status];
+
+      const pB = partnerById(b.payingPartnerId)?.name || '';
+      const oB = partnerById(b.owedPartnerId)?.name || '';
+      const uB = unitCode(b.unitId);
+      const colsB = [pB, oB, uB, b.dueDate, b.amount, b.status];
+
+      const valA = colsA[sort.idx];
+      const valB = colsB[sort.idx];
+
+      if (typeof valA === 'number') {
+        return (valA - valB) * (sort.dir === 'asc' ? 1 : -1);
+      }
+      return (valA+'').localeCompare(valB+'') * (sort.dir === 'asc' ? 1 : -1);
+    });
+
+    const rows = list.map(d => {
+      const paying = partnerById(d.payingPartnerId)?.name || 'محذوف';
+      const owed = partnerById(d.owedPartnerId)?.name || 'محذوف';
+      const unit = unitCode(d.unitId);
+      const payButton = d.status !== 'مدفوع' ? `<button class="btn ok" onclick="payPartnerDebt('${d.id}')">تسجيل السداد</button>` : 'تم السداد';
+      return [paying, owed, unit, d.dueDate, egp(d.amount), d.status, payButton];
+    });
+    const headers = ['الشريك الدافع', 'الشريك المستحق', 'الوحدة', 'تاريخ الاستحقاق', 'المبلغ', 'الحالة', ''];
+    document.getElementById('pd-list').innerHTML = table(headers, rows, sort, (ns) => { sort = ns; draw(); });
+  }
+
+  view.innerHTML = `
+    <div class="card">
+        <h3>ديون الشركاء</h3>
+        <p style="font-size:13px; color:var(--muted);">هذه هي الديون التي نشأت بين الشركاء نتيجة عمليات إرجاع الوحدات.</p>
+        <div class="tools">
+            <input class="input" id="pd-q" placeholder="بحث باسم الشريك أو الوحدة..." oninput="draw()">
+        </div>
+        <div id="pd-list"></div>
+    </div>
+  `;
+
+  window.payPartnerDebt = (debtId) => {
+    const debt = state.partnerDebts.find(d => d.id === debtId);
+    if(!debt) return alert('لم يتم العثور على الدين.');
+    if(confirm(`هل تؤكد سداد هذا الدين بمبلغ ${egp(debt.amount)}؟`)){
+        saveState();
+        debt.status = 'مدفوع';
+        persist();
+        draw();
+    }
+  };
+
+  draw();
+}
+
 window.runReport=(type)=>{
   const from=document.getElementById('rep-from').value; const to=document.getElementById('rep-to').value;
   let title='', headers=[], rows=[];
