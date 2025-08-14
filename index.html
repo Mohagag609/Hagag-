@@ -423,7 +423,7 @@ function renderUnits(){
         const san_b = building.replace(/\s/g, '');
         const san_f = floor.replace(/\s/g, '');
         const san_n = name.replace(/\s/g, '');
-        code = `${san_b}-${san_f}-${san_n}`;
+        code = `${san_b} - ${san_f} - (${san_n})`;
     }
 
     if(!total) return alert('أدخل السعر الكلي للوحدة');
