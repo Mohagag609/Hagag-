@@ -441,6 +441,15 @@ function renderCustomers(){
 window.inlineUpd=(coll,id,key,val)=>{ saveState(); const o=state[coll].find(x=>x.id===id); if(o){ o[key]=val; persist(); } };
 window.delRow=(coll,id)=>{ if(confirm('هل أنت متأكد من الحذف؟ هذا الإجراء لا يمكن التراجع عنه.')){ saveState(); state[coll]=state[coll].filter(x=>x.id!==id); persist(); nav(''+coll); } };
 
+function deleteUnit(unitId) {
+  const isLinked = state.contracts.some(c => c.unitId === unitId);
+  if (isLinked) {
+    alert('لا يمكن حذف هذه الوحدة لأنها مرتبطة بعقد قائم. يجب حذف العقد أولاً.');
+    return;
+  }
+  delRow('units', unitId);
+}
+
 /* ===== الوحدات ===== */
 function calcRemaining(u){
   const ct = state.contracts.find(c => c.unitId === u.id);
@@ -494,7 +503,7 @@ function renderUnits(){
         `<span>${egp(calcRemaining(u))}</span>`,
         `<span contenteditable="true" onblur="inlineUpd('units','${u.id}','status',this.textContent)">${u.status||'متاحة'}</span>`,
         `<div class="tools" style="gap:5px; flex-wrap:nowrap;">${actions}</div>`,
-        `<button class="btn secondary" onclick="delRow('units','${u.id}')">حذف</button>`
+        `<button class="btn secondary" onclick="deleteUnit('${u.id}')">حذف</button>`
       ];
     });
     document.getElementById('u-list').innerHTML=
@@ -748,11 +757,62 @@ function renderUnitDetails(unitId){
   drawPartners();
 }
 
+function deleteContract(contractId) {
+    if (!confirm('هل أنت متأكد من حذف هذا العقد؟ سيتم حذف جميع الأقساط والمدفوعات المرتبطة به.')) return;
+
+    const contract = state.contracts.find(c => c.id === contractId);
+    if (!contract) {
+        alert('لم يتم العثور على العقد.');
+        return;
+    }
+
+    const unitId = contract.unitId;
+
+    saveState();
+
+    // 1. Delete all payments for the unit
+    state.payments = state.payments.filter(p => p.unitId !== unitId);
+
+    // 2. Delete all installments for the unit
+    state.installments = state.installments.filter(i => i.unitId !== unitId);
+
+    // 3. Delete the contract itself
+    state.contracts = state.contracts.filter(c => c.id !== contractId);
+
+    // 4. Update the unit's status
+    const unit = unitById(unitId);
+    if (unit) {
+        unit.status = 'متاحة';
+    }
+
+    persist();
+    nav('contracts');
+}
+
 /* ===== العقود + توليد أقساط ===== */
+function editContract(contractId) {
+    const contract = state.contracts.find(c => c.id === contractId);
+    if (!contract) {
+        return alert('لم يتم العثور على العقد.');
+    }
+
+    const hasPayments = state.payments.some(p => p.unitId === contract.unitId);
+    if (hasPayments) {
+        alert('لا يمكن تعديل هذا العقد لأنه توجد مدفوعات مسجلة عليه.');
+        return;
+    }
+
+    // For now, as a placeholder, we'll just use the delete function's logic
+    // A full modal would be more complex. A simple "delete and re-add" flow is safer.
+    if (confirm('هل أنت متأكد أنك تريد "تعديل" هذا العقد؟ سيتم حذف العقد الحالي وجميع أقساطه، ويجب عليك إنشاء عقد جديد.')) {
+        deleteContract(contractId);
+    }
+}
+
 function renderContracts(){
   function draw(){
-    const rows=state.contracts.map(c=>[ c.code, unitCode(c.unitId), (custById(c.customerId)||{}).name||'—', egp(c.totalPrice), c.start, `<button class="btn" onclick="openContractDetails('${c.id}')">عرض التفاصيل</button>` ]);
-    document.getElementById('ct-list').innerHTML=table(['كود العقد','الوحدة','العميل','السعر','تاريخ البدء',''], rows);
+    const rows=state.contracts.map(c=>[ c.code, unitCode(c.unitId), (custById(c.customerId)||{}).name||'—', egp(c.totalPrice), c.start, `<button class="btn" onclick="openContractDetails('${c.id}')">عرض</button> <button class="btn gold" onclick="editContract('${c.id}')">تعديل</button>`, `<button class="btn secondary" onclick="deleteContract('${c.id}')">حذف</button>` ]);
+    document.getElementById('ct-list').innerHTML=table(['كود العقد','الوحدة','العميل','السعر','تاريخ البدء','إجراءات',''], rows);
   }
   view.innerHTML=`
   <div class="grid">
@@ -1357,40 +1417,45 @@ function renderReports(){
       </div>
 
       <h3 style="margin-bottom:12px;">2. حدد الفلاتر (اختياري)</h3>
-      <div class="grid grid-4" style="gap:8px; align-items: end;">
-        <input type="date" class="input" id="rep-from" placeholder="من تاريخ">
-        <input type="date" class="input" id="rep-to" placeholder="إلى تاريخ">
-        <select id="rep-unit-sel" class="select">
-            <option value="">كل الوحدات</option>
-            ${state.units.map(u => `<option value="${u.id}">${u.code}</option>`).join('')}
-        </select>
-        <select id="rep-customer-sel" class="select">
-            <option value="">كل العملاء</option>
-            ${state.customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-        </select>
-        <select id="rep-partner-sel" class="select">
-            <option value="">كل الشركاء</option>
-            ${state.partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
-        </select>
-        <select id="rep-status-sel" class="select">
-            <option value="">كل الحالات</option>
-            <option>متاحة</option>
-            <option>مباعة</option>
-            <option>مرتجعة</option>
-        </select>
+      <div id="rep-filters-container" class="grid grid-4" style="gap:8px; align-items: end; margin-bottom: 16px;">
+        <!-- Filters will be dynamically inserted here -->
       </div>
 
-      <h3 style="margin-bottom:12px; margin-top: 16px;">3. قم بإنشاء التقرير</h3>
-      <button class="btn" id="generate-report-btn" style="width:100%; padding: 12px; font-size: 16px;">إنشاء التقرير</button>
+      <div class="tools">
+        <button class="btn" id="generate-report-btn" style="flex:1; padding: 12px; font-size: 16px;">إنشاء التقرير</button>
+        <button class="btn secondary" id="reset-filters-btn" style="padding: 12px; font-size: 16px;">مسح الفلتر</button>
+      </div>
       <hr>
       <div id="rep-out"></div>
     </div>`;
+
+  const filtersContainer = document.getElementById('rep-filters-container');
 
   document.querySelectorAll('.report-btn').forEach(btn => {
     btn.onclick = () => {
       document.querySelectorAll('.report-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       selectedReportType = btn.dataset.type;
+
+      // Dynamically render filters based on report type
+      filtersContainer.innerHTML = ''; // Clear previous
+      const needsDates = ['payments_monthly', 'cashflow', 'partner_profits', 'inst_due', 'inst_overdue', 'cust_activity', 'partner_cashflow'];
+      const needsPartner = ['partner_profits', 'partner_cashflow'];
+
+      if (needsDates.includes(selectedReportType)) {
+        filtersContainer.innerHTML += `
+            <input type="date" class="input" id="rep-from" placeholder="من تاريخ">
+            <input type="date" class="input" id="rep-to" placeholder="إلى تاريخ">
+        `;
+      }
+      if (needsPartner.includes(selectedReportType)) {
+        filtersContainer.innerHTML += `
+          <select id="rep-partner-sel" class="select">
+              <option value="">اختر شريك...</option>
+              ${state.partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+          </select>
+        `;
+      }
     };
   });
 
@@ -1399,6 +1464,11 @@ function renderReports(){
       return alert('الرجاء اختيار نوع التقرير أولاً.');
     }
     runReport(selectedReportType);
+  };
+
+  document.getElementById('reset-filters-btn').onclick = () => {
+    filtersContainer.querySelectorAll('input, select').forEach(el => el.value = '');
+    document.getElementById('rep-out').innerHTML = ''; // Also clear report output
   };
 }
 
@@ -1476,51 +1546,24 @@ function renderPartnerDebts(){
 }
 
 window.runReport=(type)=>{
-  // 1. Get all filter values
-  const from = document.getElementById('rep-from').value;
-  const to = document.getElementById('rep-to').value;
-  const unitId = document.getElementById('rep-unit-sel').value;
-  const customerId = document.getElementById('rep-customer-sel').value;
-  const partnerId = document.getElementById('rep-partner-sel').value;
-  const unitStatus = document.getElementById('rep-status-sel').value;
-
-  // 2. Pre-filter the main data arrays based on a clear cascade
-  let f_units = state.units.slice();
-  if (unitId) f_units = f_units.filter(u => u.id === unitId);
-  if (unitStatus) f_units = f_units.filter(u => u.status === unitStatus);
-  if (customerId) {
-    const customer_unit_ids = new Set(state.contracts.filter(c => c.customerId === customerId).map(c => c.unitId));
-    f_units = f_units.filter(u => customer_unit_ids.has(u.id));
-  }
-  if (partnerId && type !== 'partner_cashflow') { // partner_cashflow has its own specific partner logic
-    const partner_unit_ids = new Set(state.unitPartners.filter(up => up.partnerId === partnerId).map(up => up.unitId));
-    f_units = f_units.filter(u => partner_unit_ids.has(u.id));
-  }
-
-  const final_unit_ids = new Set(f_units.map(u => u.id));
-
-  let f_payments = state.payments.filter(p => final_unit_ids.has(p.unitId));
-  if (from) f_payments = f_payments.filter(p => p.date >= from);
-  if (to) f_payments = f_payments.filter(p => p.date <= to);
-
-  let f_installments = state.installments.filter(i => final_unit_ids.has(i.unitId));
-  if (from) f_installments = f_installments.filter(i => i.dueDate >= from);
-  if (to) f_installments = f_installments.filter(i => i.dueDate <= to);
-
-  let f_contracts = state.contracts.filter(c => final_unit_ids.has(c.unitId));
-
+  const from=document.getElementById('rep-from')?.value;
+  const to=document.getElementById('rep-to')?.value;
   let title='', headers=[], rows=[];
   const out=document.getElementById('rep-out'); out.innerHTML='';
   switch(type){
     case 'units_status':
       title='تقرير حالة الوحدات'; headers=['الحالة','العدد','إجمالي السعر'];
-      const stats={}; f_units.forEach(u=>{ stats[u.status]=(stats[u.status]||{c:0,p:0}); stats[u.status].c++; stats[u.status].p+=Number(u.totalPrice||0); });
+      const stats={}; state.units.forEach(u=>{ stats[u.status]=(stats[u.status]||{c:0,p:0}); stats[u.status].c++; stats[u.status].p+=Number(u.totalPrice||0); });
       rows=Object.keys(stats).map(k=>[k,stats[k].c,egp(stats[k].p)]);
       break;
     case 'cust_activity':
       title='تقرير نشاط العملاء'; headers=['العميل','عدد الوحدات','إجمالي المدفوعات'];
-      const custs={}; f_contracts.forEach(c=>{ custs[c.customerId]=(custs[c.customerId]||{u:new Set(),p:0}); custs[c.customerId].u.add(c.unitId); });
-      f_payments.forEach(p=>{
+      const custs={}; state.contracts.forEach(c=>{ custs[c.customerId]=(custs[c.customerId]||{u:new Set(),p:0}); custs[c.customerId].u.add(c.unitId); });
+
+      let custPays=state.payments.slice();
+      if(from) custPays=custPays.filter(p=>p.date>=from);
+      if(to) custPays=custPays.filter(p=>p.date<=to);
+      custPays.forEach(p=>{
         const ct=state.contracts.find(c=>c.unitId===p.unitId);
         if(ct&&ct.customerId&&custs[ct.customerId]) custs[ct.customerId].p+=Number(p.amount||0);
       });
@@ -1528,26 +1571,45 @@ window.runReport=(type)=>{
       break;
     case 'inst_due':
       title='تقرير الأقساط المستحقة'; headers=['الوحدة','العميل','المبلغ','تاريخ الاستحقاق'];
-      rows=f_installments.filter(i=>i.status!=='مدفوع').map(i=>[unitCode(i.unitId),(custById(state.contracts.find(c=>c.unitId===i.unitId)?.customerId)||{}).name,egp(i.amount),i.dueDate]);
+      let inst=state.installments.filter(i=>i.status!=='مدفوع');
+      if(from) inst=inst.filter(i=>i.dueDate>=from); if(to) inst=inst.filter(i=>i.dueDate<=to);
+      rows=inst.map(i=>[unitCode(i.unitId),(custById(state.contracts.find(c=>c.unitId===i.unitId)?.customerId)||{}).name,egp(i.amount),i.dueDate]);
       break;
     case 'inst_overdue':
       title='تقرير الأقساط المتأخرة فقط';
       headers=['الوحدة', 'العميل', 'المبلغ', 'تاريخ الاستحقاق', 'أيام التأخير'];
-      const today = new Date(); today.setHours(0,0,0,0);
-      rows = f_installments.filter(i => i.status !== 'مدفوع' && i.dueDate && new Date(i.dueDate) < today).map(i => {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      let overdueInst = state.installments.filter(i => {
+          return i.status !== 'مدفوع' && i.dueDate && new Date(i.dueDate) < today;
+      });
+      if (from) overdueInst = overdueInst.filter(i => i.dueDate >= from);
+      if (to) overdueInst = overdueInst.filter(i => i.dueDate <= to);
+      rows = overdueInst.map(i => {
         const delay = Math.floor((today - new Date(i.dueDate)) / (1000 * 60 * 60 * 24));
-        return [unitCode(i.unitId), (custById(state.contracts.find(c=>c.unitId===i.unitId)?.customerId)||{}).name, egp(i.amount), i.dueDate, `${delay} يوم`]
+        return [
+          unitCode(i.unitId),
+          (custById(state.contracts.find(c=>c.unitId===i.unitId)?.customerId)||{}).name,
+          egp(i.amount),
+          i.dueDate,
+          `${delay} يوم`
+        ]
       });
       break;
     case 'payments_monthly':
       title='تقرير المدفوعات الشهرية'; headers=['الشهر','إجمالي المدفوعات'];
-      const months={}; f_payments.forEach(p=>{ const ym=p.date.slice(0,7); months[ym]=(months[ym]||0)+Number(p.amount||0); });
+      let pays=state.payments.slice();
+      if(from) pays=pays.filter(p=>p.date>=from); if(to) pays=pays.filter(p=>p.date<=to);
+      const months={}; pays.forEach(p=>{ const ym=p.date.slice(0,7); months[ym]=(months[ym]||0)+Number(p.amount||0); });
       rows=Object.keys(months).sort().map(k=>[k,egp(months[k])]);
       break;
     case 'partner_profits':
       title='تقرير أرباح الشركاء'; headers=['الشريك','الوحدة','إجمالي الدفعة','نسبة الشريك','ربح الشريك'];
-      f_payments.forEach(p=>{
-        const links=state.unitPartners.filter(up=>up.unitId===p.unitId && (!partnerId || up.partnerId === partnerId));
+      let partnerPays=state.payments.slice();
+      if(from) partnerPays=partnerPays.filter(p=>p.date>=from); if(to) partnerPays=partnerPays.filter(p=>p.date<=to);
+      const partnerIdForProfit = document.getElementById('rep-partner-sel')?.value;
+      partnerPays.forEach(p=>{
+        const links=state.unitPartners.filter(up=>up.unitId===p.unitId && (!partnerIdForProfit || up.partnerId === partnerIdForProfit));
         links.forEach(l=>{
           const profit=Math.round((p.amount*l.percent/100)*100)/100;
           rows.push([(partnerById(l.partnerId)||{}).name||'—',unitCode(p.unitId),egp(p.amount),l.percent+'%',egp(profit)]);
@@ -1557,18 +1619,20 @@ window.runReport=(type)=>{
     case 'partner_cashflow':
       title = 'تقرير ملخص تدفقات الشريك';
       headers = ['الشهر', 'إجمالي حصة الأرباح'];
+      const partnerId = document.getElementById('rep-partner-sel')?.value;
       if (!partnerId) {
           out.innerHTML = '<p style=\"color:var(--warn)\">الرجاء اختيار شريك لعرض هذا التقرير.</p>';
           return;
       }
       const partner = partnerById(partnerId);
       title += ` - ${partner.name}`;
-      const monthlyProfits = {};
-      let partner_f_payments = state.payments.filter(p => final_unit_ids.has(p.unitId));
-      if (from) partner_f_payments = partner_f_payments.filter(p => p.date >= from);
-      if (to) partner_f_payments = partner_f_payments.filter(p => p.date <= to);
 
-      partner_f_payments.forEach(p => {
+      let paysForPartner = state.payments.slice();
+      if (from) paysForPartner = paysForPartner.filter(p => p.date >= from);
+      if (to) paysForPartner = paysForPartner.filter(p => p.date <= to);
+
+      const monthlyProfits = {};
+      paysForPartner.forEach(p => {
           const link = state.unitPartners.find(up => up.unitId === p.unitId && up.partnerId === partnerId);
           if (link) {
               const profit = (p.amount * link.percent / 100);
@@ -1576,13 +1640,20 @@ window.runReport=(type)=>{
               monthlyProfits[month] = (monthlyProfits[month] || 0) + profit;
           }
       });
-      rows = Object.keys(monthlyProfits).sort().map(month => [month, egp(monthlyProfits[month])]);
+
+      rows = Object.keys(monthlyProfits).sort().map(month => [
+          month,
+          egp(monthlyProfits[month])
+      ]);
       break;
     case 'cashflow':
       title='تقرير التدفقات النقدية العامة'; headers=['التاريخ','البيان','مدين','دائن','الرصيد'];
       let trans=[];
-      f_payments.forEach(p=>trans.push({d:p.date,n:`دفعة وحدة ${unitCode(p.unitId)}`,i:p.amount,o:0}));
-      f_contracts.forEach(c=>{
+      let payFlow=state.payments.slice();
+      if(from) payFlow=payFlow.filter(p=>p.date>=from); if(to) payFlow=payFlow.filter(p=>p.date<=to);
+      payFlow.forEach(p=>trans.push({d:p.date,n:`دفعة وحدة ${unitCode(p.unitId)}`,i:p.amount,o:0}));
+
+      state.contracts.forEach(c=>{
         if(c.brokerAmount > 0) {
           const include = (!from || c.start >= from) && (!to || c.start <= to);
           if(include) {
@@ -1590,6 +1661,7 @@ window.runReport=(type)=>{
           }
         }
       });
+
       trans.sort((a,b)=>a.d.localeCompare(b.d));
       let bal=0;
       rows=trans.map(t=>{ bal+=Number(t.i||0)-Number(t.o||0); return [t.d,t.n,egp(t.i),egp(t.o),egp(bal)]; });
